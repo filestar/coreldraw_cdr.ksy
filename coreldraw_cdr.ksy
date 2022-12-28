@@ -1828,7 +1828,7 @@ types:
       - id: bpp
         type: u4
       - size: 4
-      - id: bmp_size
+      - id: bmp_size_raw
         type: u4
       - size: 32
       - id: palette
@@ -1836,6 +1836,15 @@ types:
         type: palette_type
       - id: bitmap
         size: bmp_size
+      - id: ext_data
+        type: extended_data
+        # todo: there is probably a more elegant, intended way to determine whether or not to read this.
+        if: _io.size - _io.pos >= 2
+    instances:
+      bmp_size_max:
+        value: '(_io.size - _io.pos).as<u4>'
+      bmp_size:
+        value: '(bmp_size_raw <= bmp_size_max) ? bmp_size_raw : bmp_size_max'
     types:
       palette_type:
         seq:
@@ -1864,6 +1873,17 @@ types:
             instances:
               color_value:
                  value: 'b | (g << 8) | (r << 16)'
+      extended_data:
+        seq:
+          - id: flags
+            type: u2
+          - id: length
+            type: u4
+          - size: 72
+            if: flags == 0x4952
+          - id: alpha_data
+            size-eos: true
+            if: flags == 0x4952
 
   # bmpf_chunk_data: {}
   # ppdt_chunk_data: {}
