@@ -54,7 +54,7 @@ seq:
     type: riff_chunk_type
 instances:
   version:
-    value: riff_chunk.body.version
+    value: 'riff_chunk.body.is_bidi ? 801 : riff_chunk.body.version'
     # value: >-
     #   riff_chunk.body.chunks.chunks[0].chunk_id == 'vrsn'
     #     ? riff_chunk.body.chunks.chunks[0].body.as<vrsn_chunk_data>.version
@@ -91,9 +91,18 @@ types:
   cdr_chunk_data:
     seq:
       - id: form_type
-        contents: CDR
+        size: 3
+        valid:
+          any-of:
+            # CDR
+            - '[67, 68, 82]'
+            # cdr
+            - '[99, 100, 114]'
       - id: c
         type: u1
+        valid:
+          # X
+          expr: 'c != 88'
       - id: chunks
         type: chunks_normal
         size-eos: true
@@ -114,6 +123,8 @@ types:
           c == 0x49
             ? 0
             : 100 * (c - 0x38)
+      is_bidi:
+        value: 'form_type == [99, 100, 114]'
   chunk:
     -webide-representation: '{chunk_id}'
     seq:
