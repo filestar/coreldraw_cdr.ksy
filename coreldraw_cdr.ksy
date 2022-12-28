@@ -419,7 +419,8 @@ types:
                 'arg_type::loda_coords': loda_coords
                 'arg_type::fill_style': fill_style
                 'arg_type::line_style': line_style
-                'arg_type::style': style
+                'arg_type::style_old': style_old
+                'arg_type::style_new': style_new
                 'arg_type::name': name
                 'arg_type::polygon_transform': polygon_transform
                 'arg_type::opacity': opacity
@@ -583,7 +584,7 @@ types:
                 type: u1
                 repeat: expr
                 repeat-expr: num_dashes
-      style:
+      style_old:
         seq:
           - id: style_id
             type:
@@ -591,6 +592,13 @@ types:
               cases:
                 true: u2
                 _: u4
+      style_new:
+        seq:
+          - id: style_id
+            # FIXME: might this actually be a u2 sometimes based on _root.precision_16bit?
+            type: u4
+          - id: style
+            type: style_string
       name:
         doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l305
         seq:
@@ -842,7 +850,8 @@ types:
         20: fill_style
         30: loda_coords
         100: waldo_trfd
-        200: style
+        200: style_old
+        201: style_new
         1000:
           id: name
           doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_const.py#L41
