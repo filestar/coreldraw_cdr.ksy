@@ -67,16 +67,19 @@ types:
     seq:
       - id: chunk_id
         contents: RIFF
-      - id: len_body
+      - id: len_body_raw
         type: u4
       - id: body
         type: cdr_chunk_data
-        # IIRC I added this in order to provide better detection of CCX files, which were failing
-        # to parse here at this early stage.
-        size-eos: true
-      #   size: len_body
-      # - id: pad_byte
-      #   size: len_body % 2
+        size: len_body
+      - id: pad_byte
+        size: 'len_body < len_body_max ? len_body % 2 : 0'
+    instances:
+      len_body:
+        value: '(len_body_raw <= len_body_max ? len_body_raw : len_body_max).as<u4>'
+      len_body_max:
+        value: (_io.size - _io.pos).as<u4>
+      
   chunks_normal:
     # Defined this type to be consistent with the inconsistent `cmpr` chunk
     seq:
