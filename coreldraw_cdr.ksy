@@ -661,9 +661,47 @@ types:
             size: '_root.version < 1300 ? 10 : 14'
           - id: value_raw
             type: u2
+          # FIXME: I'm not sure what the real structure is here.
+          - size: 69
+            if: _io.size >= 125
+          - id: merge_mode
+            type: u1
+            enum: merge_modes
+            if: _io.size >= 125
         instances:
           value:
             value: value_raw / 1000.0
+        enums:
+          # https://community.coreldraw.com/sdk/api/draw/17/e/cdrmergemode
+          merge_modes:
+            0: normal
+            1: and
+            2: or
+            3: xor
+            6: invert
+            7: add
+            8: subtract
+            9: multiply
+            10: divide
+            11: if_lighter
+            12: if_darker
+            13: texturize
+            14: color
+            15: hue
+            16: saturation
+            17: lightness
+            18: red
+            19: green
+            20: blue
+            24: difference
+            27: behind
+            28: screen
+            29: overlay
+            30: softlight
+            31: hardlight
+            33: dodge
+            34: burn
+            36: exclusion
       page_size:
         seq:
           - id: width
