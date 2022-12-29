@@ -71,9 +71,12 @@ types:
         type: u4
       - id: body
         type: cdr_chunk_data
-        size: len_body
-      - id: pad_byte
-        size: len_body % 2
+        # IIRC I added this in order to provide better detection of CCX files, which were failing
+        # to parse here at this early stage.
+        size-eos: true
+      #   size: len_body
+      # - id: pad_byte
+      #   size: len_body % 2
   chunks_normal:
     # Defined this type to be consistent with the inconsistent `cmpr` chunk
     seq:
