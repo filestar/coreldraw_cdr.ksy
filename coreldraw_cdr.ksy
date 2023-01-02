@@ -1235,6 +1235,7 @@ types:
                   expr: |
                     _.value_deg == 45.0
                     or _.value_deg == 10.0
+                    or _.value_deg == 6.0
                     or _.value_deg == 0.0
                     or _.value_deg == 0.0001
                 doc: |
@@ -1242,6 +1243,7 @@ types:
 
                   * 45.0 - usual value (by far the most common),
                   * 10.0 - CorelDRAW 7: DRAW/SAMPLES/WISHLIST.CDR,
+                  * 6.0
                   * 0.0:
                     - CorelDRAW 7: DRAW/SAMPLES/CAMERA.CDR
                     - CorelDRAW 8: DRAW/SAMPLES/{CAMERA.CDR,DRAW QUICK REF.CDR}
