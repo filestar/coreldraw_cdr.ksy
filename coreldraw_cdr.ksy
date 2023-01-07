@@ -1949,7 +1949,7 @@ types:
             size: 72
             if: flags == 0x4952
           - id: alpha_data
-            size-eos: true
+            size: length - 78
             if: flags == 0x4952
 
   # bmpf_chunk_data: {}
