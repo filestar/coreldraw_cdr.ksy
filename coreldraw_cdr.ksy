@@ -1877,21 +1877,26 @@ types:
           cases:
             true: u2
             _: u4
-      - size: '_root.version < 600 ? 14 : _root.version < 700 ? 46 : 50'
+      - id: unknown1
+        size: '_root.version < 600 ? 14 : _root.version < 700 ? 46 : 50'
       - id: color_model
         type: u4
-      - size: 4
+      - id: unknown2
+        size: 4
       - id: width
         type: u4
       - id: height
         type: u4
-      - size: 4
+      - id: unknown3
+        size: 4
       - id: bpp
         type: u4
-      - size: 4
+      - id: unknown4
+        size: 4
       - id: bmp_size_raw
         type: u4
-      - size: 32
+      - id: unknown5
+        size: 32
       - id: palette
         if: 'bpp < 24 and color_model != 5 and color_model != 6'
         type: palette_type
@@ -1940,7 +1945,8 @@ types:
             type: u2
           - id: length
             type: u4
-          - size: 72
+          - id: unknown
+            size: 72
             if: flags == 0x4952
           - id: alpha_data
             size-eos: true
