@@ -2015,7 +2015,9 @@ types:
       - id: font_encoding
         type: u2
         enum: text_encoding
-      - size: 14
+      - id: style_flags
+        type: text_style_flags
+      - size: 10
       - id: font_name
         size-eos: true
   stlt_chunk_data:
@@ -2191,9 +2193,9 @@ types:
           - size: 24
         instances:
           inter_line_spacing:
-            value: 'inter_line_spacing_raw.as<f8> / 1000000'
+            value: 'inter_line_spacing_raw / 1000000.0'
           inter_char_spacing:
-            value: 'inter_char_spacing_raw.as<f8> / 1000000'
+            value: 'inter_char_spacing_raw / 1000000.0'
       bullet:
         seq:
           - size: 40
@@ -2318,7 +2320,7 @@ types:
           - type: skip_1
             # libcdr checks for versions <= 700 instead, which is odd because it would include
             # version 700 but not minor version updates like 701. The simplest explanation is that
-            # it's supposed to be <800.
+            # it's supposed to be < 800.
             if: _root.version < 800
           - id: num_frames
             type: u4
@@ -2506,7 +2508,7 @@ types:
           - id: frame_flag_raw
             type: u4
           - size: 32
-          # In most cases, these bytes are set to 1700 or 1800. The only other value I have seen so
+          # In most cases, this field is set to 1700 or 1800. The only other value I have seen so
           # far is 1600, and the presence of that value seems to correlate with a different layout
           # in 'paragraph.'
           - id: style_layout_version
@@ -2606,7 +2608,7 @@ types:
               - size: 16
               - id: t_len
                 type: u4
-              - size: '(_root.version > 1600) ? t_len : (t_len * 2)'
+              - size: '_root.version > 1600 ? t_len : t_len * 2'
       char_description:
         seq:
           - id: flags
@@ -2631,7 +2633,7 @@ types:
           - id: url_id_new
             size: url_id_len
             type: str
-            encoding: ascii
+            encoding: ASCII
             if: _root.version >= 1700
         instances:
           url_id_raw:
@@ -2643,21 +2645,19 @@ types:
           - id: value_old
             size: 4
             type: strz
-            encoding: ascii
+            encoding: ASCII
             if: _root.version < 1300
 
-          - id: value_new_len_raw
+          - id: value_new_len
             type: u4
             if: _root.version >= 1300
           - id: value_new
-            doc-ref: https://www.ibm.com/docs/en/cics-ts/5.5?topic=development-national-language-codes-application
-            size: value_new_len * 2
+            size: value_new_len.as<u4> * 2
             type: str
             encoding: UTF-16LE
             if: _root.version >= 1300
+            doc-ref: https://www.ibm.com/docs/en/cics-ts/5.5?topic=development-national-language-codes-application
         instances:
-          value_new_len:
-            value: '_root.version >= 1300 ? value_new_len_raw : 0'
           value:
             value: '_root.version >= 1300 ? value_new : value_old'
   urls_chunk_data:
@@ -3219,31 +3219,29 @@ types:
             - SVGColor # file name (SVGColor.xml)
           doc: SVG Colors
   text_style_flags:
+    doc-ref: https://community.coreldraw.com/sdk/api/draw/17/c/structfontproperties
     seq:
-      - id: emphasis_raw
-        type: u2
-      - id: unknown
-        type: b2
+      - id: style
+        type: b18
+        enum: font_style
       - id: underline
         type: b3
-        enum: decoration
+        enum: font_line
       - id: overline
         type: b3
-        enum: decoration
+        enum: font_line
       - id: strike_through_line
         type: b3
-        enum: decoration
-      - id: script
+        enum: font_line
+      - id: position
         type: b2
-        enum: script_type
+        enum: font_position
+
+      # NOTE: At least two bits of this field correspond to https://community.coreldraw.com/sdk/api/draw/17/e/cdrfontcase
       - type: b3
-    instances:
-      italic:
-        value: emphasis_raw == 0x0080 or emphasis_raw == 0x2000
-      bold:
-        value: emphasis_raw == 0x1000 or emphasis_raw == 0x2000
     enums:
-      decoration:
+      # https://community.coreldraw.com/sdk/api/draw/17/e/cdrfontline
+      font_line:
         0: none
         1: single_thin
         2: single_thin_word
@@ -3251,7 +3249,11 @@ types:
         4: single_thick_word
         5: double_thin
         6: double_thin_word
-      script_type:
+        7: mixed
+      # NOTE: https://community.coreldraw.com/sdk/api/draw/17/e/cdrfontposition has subscript at 1
+      # and superscript at 2, but that doesn't agree with sample files - the interpretation below
+      # does.
+      font_position:
         0: none
         1: superscript
         2: subscript
@@ -3285,3 +3287,23 @@ enums:
     0xde: thai                      # cp874
     0xee: latin_ii_central_european # cp1250
     0xff: oem_latin_i
+  font_style:
+    0x0000_0000: normal
+    0x0000_0001: bold
+    0x0000_0002: italic
+    0x0000_0004: bold_italic
+    0x0000_0008: thin
+    0x0000_0010: thin_italic
+    0x0000_0020: extra_light
+    0x0000_0040: extra_light_italic
+    0x0000_0080: medium
+    0x0000_0100: medium_italic
+    0x0000_0200: semi_bold
+    0x0000_0400: semi_bold_italic
+    0x0000_0800: extra_bold
+    0x0000_1000: extra_bold_italic
+    0x0000_2000: heavy
+    0x0000_4000: heavy_italic
+    0x0000_8000: mixed
+    0x0001_0000: light
+    0x0002_0000: light_italic
