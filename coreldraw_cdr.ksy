@@ -1893,24 +1893,23 @@ types:
         type: u4
       - id: unknown4
         size: 4
-      - id: bmp_size_raw
+      - id: bmp_size
         type: u4
       - id: unknown5
         size: 32
       - id: palette
-        if: 'bpp < 24 and color_model != 5 and color_model != 6'
+        if: 'bpp < 24 and color_model != 5 and color_model != 6 and color_model != 99'
         type: palette_type
       - id: bitmap
         size: bmp_size
+        if: bmp_size <= bmp_size_max
       - id: ext_data
         type: extended_data
         # todo: there is probably a more elegant, intended way to determine whether or not to read this.
-        if: _io.size - _io.pos >= 2
+        if: bmp_size <= bmp_size_max and _io.size - _io.pos >= 2
     instances:
       bmp_size_max:
         value: '(_io.size - _io.pos).as<u4>'
-      bmp_size:
-        value: '(bmp_size_raw <= bmp_size_max) ? bmp_size_raw : bmp_size_max'
     types:
       palette_type:
         seq:
