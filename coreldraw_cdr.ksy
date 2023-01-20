@@ -1996,7 +1996,11 @@ types:
   spnd_chunk_data:
     seq:
       - id: spnd
-        type: u4
+        type:
+          switch-on: _root.precision_16bit
+          cases:
+            true: u2
+            _: u4
   uidr_chunk_data:
     seq:
       - id: color_id
@@ -2154,7 +2158,7 @@ types:
             value: 'sizeof<u4> + 12 + (_root.precision_16bit ? sizeof<s2> : sizeof<s4>) * 3'
 
           has_set11s:
-            value: _root.version > 800
+            value: _root.version >= 801
       entry:
         seq:
           - id: id
@@ -2200,7 +2204,7 @@ types:
         seq:
           - size: 40
           - size: 4
-            if: _root.version > 1300
+            if: _root.version >= 1400
 
           - id: indicator_x3
             type: u4
@@ -2296,7 +2300,16 @@ types:
     seq:
       - id: body
         type:
-          switch-on: '_root.version < 500 ? 0 : (_root.version < 600 ? 5 : (_root.version < 700 ? 6 : (_root.version >= 1600 ? 16 : 7)))'
+          switch-on: |
+            _root.version < 500
+              ? 0 :
+            _root.version < 600
+              ? 5 :
+            _root.version < 700
+              ? 6 :
+            _root.version >= 1600
+              ? 16
+              : 7
           cases:
             0: txsm_0
             5: txsm_5
@@ -2353,7 +2366,7 @@ types:
                 type: u4
               - size: 48
               - type: skip_2
-                if: _root.version > 700
+                if: _root.version >= 800
               - size: |
                   _root.version >= 1500
                     ? 40 :
@@ -2386,7 +2399,7 @@ types:
                     seq:
                       - size: 4
                       - size: 8
-                        if: _root.version > 1200
+                        if: _root.version >= 1300
                       - size: 28
                       - size: 8
                         if: _root.version >= 1500
@@ -2396,7 +2409,7 @@ types:
                 type: u4
               - size: 1
               - size: 1
-                if: _root.version > 1200 and _parent.frame_flag
+                if: _root.version >= 1300 and _parent.frame_flag
               - id: num_styles
                 type: u4
               - id: styles
@@ -2612,7 +2625,7 @@ types:
               - size: 16
               - id: t_len
                 type: u4
-              - size: '_root.version > 1600 ? t_len : t_len * 2'
+              - size: '_root.version >= 1700 ? t_len : t_len * 2'
       char_description:
         seq:
           - id: flags
