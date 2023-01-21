@@ -1711,7 +1711,7 @@ types:
   spid_chunk_data:
     seq:
       - id: value
-        size: 16
+        type: guid
 
   # ptrt_chunk_data:
   #   seq:
