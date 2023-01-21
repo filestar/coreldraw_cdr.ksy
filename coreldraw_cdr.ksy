@@ -238,6 +238,7 @@ types:
             '"fill"': fild_chunk_data # before CDR 700: `_root.version < 700`
             # '"arrw"': arrw_chunk_data
             '"flgs"': flgs_chunk_data
+            '"spid"': spid_chunk_data
             # '"ptrt"': ptrt_chunk_data
             '"usdn"': usdn_chunk_data
             '"mcfg"': mcfg_chunk_data
@@ -1707,6 +1708,10 @@ types:
         0x10: group
         0x90: page
         0x98: layer
+  spid_chunk_data:
+    seq:
+      - id: value
+        size: 16
 
   # ptrt_chunk_data:
   #   seq:
