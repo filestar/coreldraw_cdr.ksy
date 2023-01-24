@@ -2413,9 +2413,12 @@ types:
               - id: style_id
                 type: u4
               - size: 1
-              - size: 1
+              - id: has_unknown_raw
+                type: u1
                 # NOTE: libcdr checks for versions > 1200 instead, which seems like a mistake.
                 if: _root.version >= 1300 and _parent.frame_flag
+              - size: 64
+                if: has_unknown
               - id: num_styles
                 type: u4
               - id: styles
@@ -2438,6 +2441,8 @@ types:
               - size: num_chars * 24
                 if: has_path
             instances:
+              has_unknown:
+                value: _root.version >= 1300 and _parent.frame_flag and has_unknown_raw.as<u1> != 0
               num_bytes_in_text:
                 value: '_root.version >= 1200 ? num_bytes_in_text_raw : num_chars'
               has_path:
