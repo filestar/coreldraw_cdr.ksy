@@ -2624,7 +2624,7 @@ types:
                 type: u2
               - id: url_properties
                 type: url_props
-                if: st_flag_2 == 0x3fff and (st_flag_3 & 0x11) == 0x11
+                if: st_flag_2 == 0x3fff and (st_flag_3 & 0x01) != 0
               - id: locale
                 type: text_locale
                 if: (st_flag_3 & 0x04) != 0
