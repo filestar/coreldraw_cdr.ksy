@@ -61,7 +61,7 @@ instances:
     #     : riff_chunk.body.version
   precision_16bit:
     doc-ref: https://github.com/LibreOffice/libcdr/blob/4b28c1a10f06e0a610d0a740b8a5839dcec9dae4/src/lib/CDRParser.cpp#L2415-L2418
-    value: _root.version < 600
+    value: '_root.version < 600 or (_root.version == 3200 and _root.riff_chunk.body.chunks.chunks[0].wrapper.body_local.body.as<chunk_data_common>.body.as<cont_chunk_data>.coord_size.to_i == 2)'
 types:
   riff_chunk_type:
     seq:
@@ -106,9 +106,6 @@ types:
             - '[99, 100, 114]'
       - id: c
         type: u1
-        valid:
-          # X
-          expr: 'c != 88'
       - id: chunks
         type: chunks_normal
         size-eos: true
@@ -178,7 +175,7 @@ types:
       len_body:
         value: 'has_redir_data ? len_body_redir.as<u4> : _io.size'
       has_redir_data:
-        value: '_root.version >= 1600 and _io.size == 0x10'
+        value: '_root.version >= 1600 and _root.version != 3200 and _io.size == 0x10'
       is_body_external:
         value: 'has_redir_data and stream_number != 0xffff_ffff'
   chunk_body:
@@ -227,6 +224,9 @@ types:
         type:
           switch-on: chunk_id
           cases:
+            '"cont"': cont_chunk_data
+            '"pack"': pack_chunk_data
+            '"page"': page_chunk_data
             '"DISP"': disp_chunk_data
             '"loda"': loda_chunk_data
             '"lobj"': loda_chunk_data
@@ -277,6 +277,152 @@ types:
     seq:
       - id: version
         type: u2
+  cont_chunk_data:
+    seq:
+      - id: file_id
+        type: strz
+        size: 32
+      - id: platform
+        type: strz
+        size: 16
+      - id: byte_order
+        type: strz
+        size: 4
+        valid: '"2"' # big endian not yet supported
+      - id: coord_size
+        type: strz
+        size: 2
+      - id: version_major
+        type: strz
+        size: 4
+      - id: version_minor
+        type: strz
+        size: 4
+      - id: units
+        type: u2
+      - id: scale
+        type: f8
+      - size: 12
+      - id: index_section_offset
+        type: u4
+      - id: info_section_offset
+        type: u4
+      - id: thumbnail_offset
+        type: u4
+      # Relies on coord, which relies on _root.precision_16bit, which relies on this 'cont' chunk.
+      #- id: box
+      #  type: bbox
+    types:
+      bbox:
+        seq:
+          - id: p0_x
+            type: coord
+          - id: p0_y
+            type: coord
+          - id: p1_x
+            type: coord
+          - id: p1_y
+            type: coord 
+  pack_chunk_data:
+    seq:
+      - size: 12
+      - id: chunks
+        type: chunks_normal
+        size-eos: true
+        process: zlib
+  page_chunk_data:
+    seq:
+      - id: commands
+        type: command
+        repeat: eos
+    types:
+      command:
+        seq:
+          - id: command_size_small
+            type: s2
+          - id: command_size_big
+            type: s4
+            if: command_size_small < 0
+          - id: code
+            type: s2
+            enum: cmx_command
+          - id: body
+            type:
+              switch-on: code
+              cases:
+                'cmx_command::poly_curve': poly_curve
+            size: command_size - header_size
+        instances:
+          command_size:
+            value: 'command_size_small >= 0 ? command_size_small : command_size_big.as<s4>'
+          header_size:
+            value: 'command_size_small >= 0 ? 4 : 8'
+      poly_curve:
+        seq:
+          - id: body
+            type:
+              switch-on: _root.precision_16bit
+              cases:
+                true: poly_curve_16
+                _: poly_curve_32
+        types:
+          poly_curve_16:
+            seq:
+              - id: num_points_raw
+                type: u2
+              - id: points
+                type: points_list(num_points_raw)
+          poly_curve_32:
+            seq: []
+
+    enums:
+      cmx_command:
+        2: comment
+        9: begin_page
+        10: end_page
+        11: begin_layer
+        12: end_layer
+        13: begin_group
+        14: end_group
+        17: begin_procedure
+        18: end_section
+        20: begin_text_stream
+        21: end_text_stream
+        22: begin_embedded
+        23: end_embedded
+        65: draw_chars
+        66: ellipse
+        67: poly_curve
+        68: rectangle
+        69: draw_image
+        70: begin_text_object
+        71: end_text_object
+        72: begin_text_group
+        73: end_text_group
+        85: set_char_style
+        86: simple_wide_text
+        88: add_clipping_region
+        89: remove_last_clipping_region
+        90: clear_clipping
+        91: push_mapping_mode
+        92: pop_mapping_mode
+        93: set_global_transform
+        94: add_global_transform
+        95: restore_last_global_transfo
+        98: text_frame
+        99: begin_paragraph
+        100: end_paragraph
+        101: char_info
+        102: characters
+        103: push_tint
+        104: pop_tint
+        111: jump_absolute
+      cmx_tag_poly_curve:
+        1: rendering_attr
+        2: points_list
+        3: bounding_box
+        4: keep_fill_for_open_path
+
   disp_chunk_data:
     # TODO: replace with imported type from BMP spec
     seq:
