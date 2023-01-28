@@ -227,6 +227,7 @@ types:
             '"cont"': cont_chunk_data
             '"pack"': pack_chunk_data
             '"page"': page_chunk_data
+            '"rclr"': rclr_chunk_data
             '"DISP"': disp_chunk_data
             '"loda"': loda_chunk_data
             '"lobj"': loda_chunk_data
@@ -312,17 +313,6 @@ types:
       # Relies on coord, which relies on _root.precision_16bit, which relies on this 'cont' chunk.
       #- id: box
       #  type: bbox
-    types:
-      bbox:
-        seq:
-          - id: p0_x
-            type: coord
-          - id: p0_y
-            type: coord
-          - id: p1_x
-            type: coord
-          - id: p1_y
-            type: coord 
   pack_chunk_data:
     seq:
       - size: 12
@@ -350,6 +340,7 @@ types:
             type:
               switch-on: code
               cases:
+                'cmx_command::begin_page': begin_page
                 'cmx_command::poly_curve': poly_curve
             size: command_size - header_size
         instances:
@@ -357,6 +348,26 @@ types:
             value: 'command_size_small >= 0 ? command_size_small : command_size_big.as<s4>'
           header_size:
             value: 'command_size_small >= 0 ? 4 : 8'
+      begin_page:
+        seq:
+          - id: body
+            type:
+              switch-on: _root.precision_16bit
+              cases:
+                true: begin_page_16
+                _: begin_page_32
+        types:
+          begin_page_16:
+            seq:
+              # - id: raw_data
+              #   size-eos: true
+              - size: 2
+              - id: flags
+                type: u4
+              - id: box
+                type: bbox
+          begin_page_32:
+            seq: []
       poly_curve:
         seq:
           - id: body
@@ -368,13 +379,59 @@ types:
         types:
           poly_curve_16:
             seq:
+              - id: rendering_attributes
+                type: rendering_attributes_16
               - id: num_points_raw
                 type: u2
               - id: points
                 type: points_list(num_points_raw)
           poly_curve_32:
             seq: []
-
+      rendering_attribute_flags:
+        seq:
+          - id: has_fill
+            type: b1
+          - id: has_outline
+            type: b1
+          - id: has_lens
+            type: b1
+          - id: has_canvas
+            type: b1
+          - id: has_container
+            type: b1
+          - type: b3
+      rendering_attributes_16:
+        seq:
+          - id: flags
+            type: rendering_attribute_flags
+          - id: fill
+            type: fill_16
+            if: flags.has_fill
+          # - id: outline
+          #   if: flags.has_outline
+          # - id: lens
+          #   if: flags.has_lens
+          # - id: canvas
+          #   if: flags.has_canvas
+          # - id: container
+          #   if: flags.has_container
+        types:
+          fill_16:
+            seq:
+              - id: fill_type
+                type: u2
+              - id: contents
+                type:
+                  switch-on: fill_type
+                  cases:
+                    1: uniform_fill
+            types:
+              uniform_fill:
+                seq:
+                  - id: palette_color_id
+                    type: u2
+                  - size: 2
+          
     enums:
       cmx_command:
         2: comment
@@ -422,6 +479,32 @@ types:
         2: points_list
         3: bounding_box
         4: keep_fill_for_open_path
+  rclr_chunk_data:
+    seq:
+      - id: colors
+        type:
+          switch-on: _root.precision_16bit
+          cases:
+            true: rclr_16
+            _: rclr_32
+        repeat: eos
+    types:
+      rclr_16:
+        seq:
+          - id: color_model
+            type: u1
+            enum: color_model
+          - size: 1
+          - id: value
+            size: |
+              color_model == color_model::cmy or color_model == color_model::bgr or color_model == color_model::yiq255 or color_model == color_model::lab_signed_int8
+                ? 3 :
+              color_model == color_model::bw or color_model == color_model::grayscale
+                ? 1 :
+                4
+      rclr_32:
+        seq: []
+      
 
   disp_chunk_data:
     # TODO: replace with imported type from BMP spec
@@ -2954,6 +3037,15 @@ types:
         value: >-
           raw / (_root.precision_16bit ? 1000.0 : 254000.0)
     -webide-representation: "{value:dec}"
+  box_coord:
+    seq:
+      - id: raw
+        type: s4
+    instances:
+      value:
+        value: >-
+          raw / 1000.0
+    -webide-representation: "{value:dec}"
   points_list:
     params:
       - id: num_points_raw
@@ -3136,63 +3228,6 @@ types:
             repeat: expr
             repeat-expr: 4
     enums:
-      # https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L336-L582
-      # https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_const.py#L62-L82
-      # https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
-      color_model:
-        1: pantone
-        2: cmyk100
-        3: cmyk255_i3
-        4: cmy
-        5: bgr
-        6: hsb
-        7: hls
-        8: bw
-        9: grayscale
-        11: yiq255
-        12:
-          id: lab_signed_int8
-          doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L541-L554
-        13:
-          id: index
-          doc-ref: CorelDRAW 9 Draw_scr.hlp
-          doc: no longer present in CorelDRAW 10 DRAW10VBA.HLP
-        14: pantone_hex
-        15:
-          id: hexachrome
-          doc-ref: CorelDRAW 9 Draw_scr.hlp
-          doc: no longer present in CorelDRAW 10 DRAW10VBA.HLP
-        17: cmyk255_i17
-        18:
-          id: lab_offset_128
-          doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L555-L568
-        20: registration
-        21:
-          id: bgr_tint
-          # NOTE: libcdr treats color model `21` (0x15) as CMYK100
-          # (https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L339),
-          # but that is clearly wrong according to sample files
-          doc: |
-            Seen only in `fild_chunk_data::solid` in a `property_type::color`
-            property for "special palette" colors so far.
-
-            color_value[0]: Blue (0..255)
-            color_value[1]: Green (0..255)
-            color_value[2]: Red (0..255)
-            color_value[3]: Tint (0..100) - as in `color_model::spot`
-
-            However, note that "Tint" has already been factored into the RGB
-            value, so it's apparently just for reference.
-        22:
-          id: user_ink
-          doc-ref: https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
-        25: spot
-        26:
-          id: multi_channel
-          doc-ref: https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
-        99:
-          id: mixed
-          doc-ref: https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
       # CorelDRAW 9: Programs/Draw_scr.hlp, Programs/Data/*.{cpl,pcp}
       # CorelDRAW 10: Programs/DRAW10VBA.HLP, Programs/Data/*.cpl
       # CorelDRAW 11: Programs/DRAW11VBA.HLP, Programs/Data/*.cpl
@@ -3449,6 +3484,16 @@ types:
     instances:
       len:
         value: '_root.version < 1700 ? len_raw * 2 : len_raw'
+  bbox:
+    seq:
+      - id: p0_x
+        type: box_coord
+      - id: p0_y
+        type: box_coord
+      - id: p1_x
+        type: box_coord
+      - id: p1_y
+        type: box_coord
 enums:
   text_encoding:
     0x00: latin                     # cp1252
@@ -3491,3 +3536,60 @@ enums:
     0x0000_8000: extra_bold_italic
     0x0001_0000: heavy
     0x0002_0000: heavy_italic
+  # https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L336-L582
+  # https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_const.py#L62-L82
+  # https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
+  color_model:
+    1: pantone
+    2: cmyk100
+    3: cmyk255_i3
+    4: cmy
+    5: bgr
+    6: hsb
+    7: hls
+    8: bw
+    9: grayscale
+    11: yiq255
+    12:
+      id: lab_signed_int8
+      doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L541-L554
+    13:
+      id: index
+      doc-ref: CorelDRAW 9 Draw_scr.hlp
+      doc: no longer present in CorelDRAW 10 DRAW10VBA.HLP
+    14: pantone_hex
+    15:
+      id: hexachrome
+      doc-ref: CorelDRAW 9 Draw_scr.hlp
+      doc: no longer present in CorelDRAW 10 DRAW10VBA.HLP
+    17: cmyk255_i17
+    18:
+      id: lab_offset_128
+      doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L555-L568
+    20: registration
+    21:
+      id: bgr_tint
+      # NOTE: libcdr treats color model `21` (0x15) as CMYK100
+      # (https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRCollector.cpp#L339),
+      # but that is clearly wrong according to sample files
+      doc: |
+        Seen only in `fild_chunk_data::solid` in a `property_type::color`
+        property for "special palette" colors so far.
+
+        color_value[0]: Blue (0..255)
+        color_value[1]: Green (0..255)
+        color_value[2]: Red (0..255)
+        color_value[3]: Tint (0..100) - as in `color_model::spot`
+
+        However, note that "Tint" has already been factored into the RGB
+        value, so it's apparently just for reference.
+    22:
+      id: user_ink
+      doc-ref: https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
+    25: spot
+    26:
+      id: multi_channel
+      doc-ref: https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
+    99:
+      id: mixed
+      doc-ref: https://community.coreldraw.com/sdk/api/draw/17/e/cdrcolortype
