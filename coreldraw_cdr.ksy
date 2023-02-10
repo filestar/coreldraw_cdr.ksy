@@ -239,7 +239,8 @@ types:
             # '"arrw"': arrw_chunk_data
             '"flgs"': flgs_chunk_data
             '"spid"': spid_chunk_data
-            # '"ptrt"': ptrt_chunk_data
+            '"pref"': pref_chunk_data
+            '"ptrt"': ptrt_chunk_data
             '"usdn"': usdn_chunk_data
             '"mcfg"': mcfg_chunk_data
             '"bmp "': bmp_chunk_data
@@ -433,6 +434,8 @@ types:
                 'arg_type::opacity': opacity
                 'arg_type::page_size': page_size
                 'arg_type::guid_layer': guid
+                'arg_type::palt': palt
+                'arg_type::unknown_num': unknown_num
 
       loda_coords:
         seq:
@@ -440,6 +443,7 @@ types:
             type:
               switch-on: _parent._parent.chunk_type
               cases:
+                'chunk_types::layer': layer
                 'chunk_types::spline': spline
                 'chunk_types::rectangle': rectangle
                 'chunk_types::ellipse': ellipse
@@ -448,6 +452,9 @@ types:
                 'chunk_types::artistic_text': artistic_text
                 'chunk_types::bitmap': bitmap
                 'chunk_types::paragraph_text': paragraph_text
+                'chunk_types::grid': grid
+                'chunk_types::guides': guides
+                'chunk_types::desktop': desktop
                 'chunk_types::polygon_coords': polygon_coords
 
       fill_style:
@@ -715,8 +722,31 @@ types:
             type: coord
           - id: height
             type: coord
+      palt:
+        seq:
+          # FIXME: the segmentation into these specific fields is mostly nonsense, and the overall size may be wrong in some (many?) cases
+          - id: value_1
+            type: u4
+          - id: value_2
+            type: u2
+          - id: value_3
+            type: u2
+          - id: value_4
+            size: 5
+          - id: value_5
+            type: u4
+          - id: value_6
+            type: u2
+          - id: value_7
+            size: 24
+
+      unknown_num:
+        seq:
+          - id: value
+            type: u4
 
       spline: {}
+      layer: {}
       rectangle:
         doc-ref: https://github.com/LibreOffice/libcdr/blob/4b28c1a10f06e0a610d0a740b8a5839dcec9dae4/src/lib/CDRParser.cpp#L1162
         seq:
@@ -889,6 +919,9 @@ types:
             type: coord
           - id: height
             type: coord
+      grid: {}
+      guides: {}
+      desktop: {}
       polygon_coords:
         seq:
           - id: num_points_raw
@@ -920,6 +953,7 @@ types:
         12030:
           id: rotate
           doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l485
+        16001: unknown_num
         19130:
           id: page_size
           doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRParser.cpp#L1817-L1818
@@ -935,12 +969,16 @@ types:
             the master page which are then referenced in content pages via the
             same GUID
       chunk_types:
+        0x00: layer
         0x01: rectangle
         0x02: ellipse
         0x03: line_and_curve
         0x04: artistic_text
         0x05: bitmap
         0x06: paragraph_text
+        0x0B: grid
+        0x0C: guides
+        0x11: desktop
         0x14: polygon_coords
         0x25: path
         0x26: spline
@@ -1702,6 +1740,7 @@ types:
         0x08: desktop
         0x0a: guides
         0x1a: grid
+        0x40: page
       # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l926
       chunk_types:
         0x08: object
@@ -1712,13 +1751,19 @@ types:
     seq:
       - id: value
         type: guid
-
-  # ptrt_chunk_data:
-  #   seq:
-  #     - id: groups
-  #       size: 4
-  #       repeat: expr
-  #       repeat-expr: 4
+  pref_chunk_data:
+    seq:
+      # This field seems to represent a list of key value pairs, separated by null codepoints
+      # FIXME: this should probably be a `repeat: eos` field, with null separators
+      - id: value
+        type: str
+        encoding: UTF-16LE
+        size-eos: true
+  ptrt_chunk_data:
+    seq:
+      # Is this really a GUID?
+      - id: value
+        type: guid
 
   usdn_chunk_data:
     doc: |
@@ -1762,6 +1807,8 @@ types:
       - id: page_size
         if: v >= 400
         type: new_page_size
+      - id: unknown1
+        size-eos: true
       # # FIXME: starting from here, the positions are completely off in newer CDR
       # # versions (so it's obviously reading garbage), there's probably some
       # # unknown data to skip
@@ -1769,7 +1816,7 @@ types:
       #   type: u2
       # - id: orientation
       #   type: u2
-      #   enum: orientation
+      #   enum: orientations
       # - id: unknown2
       #   size: 12
       # - id: show_page_border
@@ -1777,13 +1824,13 @@ types:
       #   enum: boolean
       # - id: layout
       #   type: u2
-      #   enum: layout
+      #   enum: layouts
       # - id: facing_pages
       #   type: u2
       #   enum: boolean
       # - id: start_on
       #   type: u2
-      #   enum: start_on
+      #   enum: side
       # - id: offset_x
       #   type: coord
       # - id: offset_y
@@ -1844,10 +1891,10 @@ types:
           - id: height
             type: coord
     # enums:
-    #   orientation:
+    #   orientations:
     #     0: portrait
     #     1: landscape
-    #   layout:
+    #   layouts:
     #     1: full_page
     #     2: book
     #     3: booklet
@@ -1857,7 +1904,7 @@ types:
     #   boolean:
     #     0: false
     #     1: true
-    #   start_on:
+    #   side:
     #     0: right_side
     #     1: left_side
     #   unit:
