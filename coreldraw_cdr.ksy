@@ -1060,7 +1060,6 @@ types:
             type: trafo
             if: is_trafo
       trafo:
-        
         seq:
           - id: unknown1
             if: _root.version >= 600
@@ -1071,11 +1070,11 @@ types:
     seq:
       - id: outl_id
         type: u4
-      - id: skips
+      - id: properties
         if: _root.version >= 1300
-        type: skip
+        type: property
         repeat: until
-        repeat-until: _.id == 1
+        repeat-until: '_.type == property_type::end'
       - id: line_type
         type: u2
       - id: caps_type
@@ -1094,6 +1093,10 @@ types:
         size: 2
       - id: angle
         type: angle
+      # FIXME: at least for sample files versioned >= 1500, the data in this field looks like the
+      # last 46/48 bytes of a `matrix`, and we conveniently have two spare bytes above in
+      # `unknown2`. Needs further investigation on earlier versions to make sure we don't break
+      # `angle`.
       - id: unknown3
         size: |
           _root.version >= 1300 ? 46
@@ -1113,6 +1116,8 @@ types:
         type: u4
       - id: end_marker_id
         type: u4
+      - id: rest
+        size-eos: true
     instances:
       ofs_dashes:
         value: _io.pos
@@ -1128,15 +1133,31 @@ types:
       stretch:
         value: stretch_raw / 100.0
     types:
-      skip:
+      property:
         seq:
-          - id: id
+          - id: type
             type: u4
-          - id: lngth
+            enum: property_type
+          - id: len_body
             type: u4
-          - id: unknown
-            if: id != 1
-            size: lngth
+          - id: body
+            size: len_body
+            type:
+              switch-on: type
+              cases:
+                property_type::color_properties: color_property_list
+                property_type::unknown_num: u4
+            # FIXME: We ignore `len_body` if the type is `end`; however, in the `end` property of
+            # the sample files I've tested, `len_body` is equal to the number of remaining bytes in
+            # the 'outl' chunk, minus 8. This might suggest that most of the fields of
+            # `outl_chunk_data` should be moved into another type, and that that type should form
+            # the body of the `end` property.
+            if: type != property_type::end
+    enums:
+      property_type:
+        1: end
+        2: color_properties
+        3: unknown_num
 
   fild_chunk_data:
     seq:
