@@ -435,7 +435,8 @@ types:
                 'arg_type::page_size': page_size
                 'arg_type::guid_layer': guid
                 'arg_type::palt': palt
-                'arg_type::unknown_num': unknown_num
+                'arg_type::unknown_num_1': unknown_num
+                'arg_type::unknown_num_2': unknown_num
 
       loda_coords:
         seq:
@@ -724,22 +725,8 @@ types:
             type: coord
       palt:
         seq:
-          # FIXME: the segmentation into these specific fields is mostly nonsense, and the overall size may be wrong in some (many?) cases
-          - id: value_1
-            type: u4
-          - id: value_2
-            type: u2
-          - id: value_3
-            type: u2
-          - id: value_4
-            size: 5
-          - id: value_5
-            type: u4
-          - id: value_6
-            type: u2
-          - id: value_7
-            size: 24
-
+          - id: color_properties
+            type: color_property_list
       unknown_num:
         seq:
           - id: value
@@ -953,7 +940,8 @@ types:
         12030:
           id: rotate
           doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l485
-        16001: unknown_num
+        12000: unknown_num_1
+        16001: unknown_num_2
         19130:
           id: page_size
           doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRParser.cpp#L1817-L1818
@@ -1004,6 +992,13 @@ types:
           cases:
             true: u2
             _: u4
+      - id: unknown1
+        type:
+          switch-on: _root.precision_16bit
+          cases:
+            true: u2
+            _: u4
+        doc: In the one sample file I've tested, this field is set to 0xFFFF
     instances:
       arg_offsets:
         doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRParser.cpp#L1336-L1338
@@ -1019,12 +1014,26 @@ types:
         type: trafo_wrapper(arg_offsets[_index])
         repeat: expr
         repeat-expr: num_of_args
+      unknown2:
+        pos: _io.size - 8
+        size: 8
+        valid: '[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]'
+        # FIXME: I haven't checked if this condition is correct
+        if: _root.version >= 1300
     types:
       trafo_wrapper:
         params:
           - id: offs
             type: u4
+        # FIXME: at this point it might make sense to add a type with `since_version`, `tmp_type`
+        # and `body` as fields (with four bytes of conditional padding between the first two), then
+        # replace these instances with a single instance of that new type.
         instances:
+          since_version:
+            pos: 'offs'
+            type: u4
+            valid: 1300
+            if: _root.version >= 1300
           tmp_type:
             pos: 'offs + (_root.version >= 1300 ? 8 : 0)'
             type: u2
@@ -1236,14 +1245,8 @@ types:
         types:
           property_list:
             seq:
-              - id: color_old
-                type: color
-                if: _root.version < 1300
-              - id: items
-                type: property
-                repeat: until
-                repeat-until: _.type == property_type::end
-                if: _root.version >= 1300
+              - id: color_properties
+                type: color_property_list
               - id: unknown1
                 type: u2
                 valid:
@@ -1301,122 +1304,6 @@ types:
             instances:
               overprint:
                 value: overprint_raw != 0
-
-          property:
-            seq:
-              - id: type
-                type: u1
-                enum: property_type
-              - id: len_body
-                type: u4
-                valid:
-                  eq: |
-                    type == property_type::color
-                      ? 12 :
-                    type == property_type::palette_guid
-                      ? 16 :
-                    type == property_type::end
-                      ? 0 :
-                      len_body
-              - id: body
-                size: len_body
-                type:
-                  switch-on: type
-                  cases:
-                    property_type::color: color
-                    property_type::special_palette_color_lab: color
-                    property_type::palette_guid: guid
-                    property_type::special_palette_color_part1: special_palette_color_part1
-                    property_type::special_palette_color_part2: special_palette_color_part2
-                    property_type::special_palette_color_id: palette_color_id
-                    property_type::special_palette_color_name: palette_color_name
-                if: type != property_type::end
-          palette_color_id:
-            seq:
-              - id: id
-                type: u2
-              - id: rest
-                size-eos: true
-                valid:
-                  eq: '[].as<bytes>'
-          palette_color_name:
-            seq:
-              - id: name
-                type: color_name
-              - id: rest
-                size-eos: true
-                valid:
-                  eq: '[].as<bytes>'
-          special_palette_color_part1:
-            seq:
-              - id: palette_guid
-                type: guid
-              - id: name
-                type: color_name
-              - id: special_pal_p1_rest
-                size-eos: true
-          special_palette_color_part2:
-            seq:
-              # this `name_raw` is actually null-terminated, unlike the others
-              - id: name_raw
-                type: color_name
-              - id: special_pal_p2_rest
-                size-eos: true
-            instances:
-              name:
-                # assumes `_root.version >= 1200`
-                value: |
-                  name_raw.name.substring(name_raw.name.length - 1, name_raw.name.length) == [0x00, 0x00].to_s('UTF-16LE')
-                    ? name_raw.name.substring(0, name_raw.name.length - 1)
-                    : name_raw.name
-          color_name:
-            seq:
-              - id: char_len_name
-                type: u4
-              - id: name
-                size: char_len_name * 2
-                type: str
-                encoding: UTF-16LE
-        enums:
-          property_type:
-            0x00: end
-            0x01: color
-            0x03: special_palette_color_part2
-            0x06:
-              id: special_palette_color_lab
-              doc: |
-                in addition to the standard `property_type::color` which seems to be using
-                `color_model::bgr_tint` (whenever found in the same solid fill as
-                `property_type::special_palette_color_lab`), this property appears only
-                for "special palette" colors (as all
-                `property_type::special_palette_color_*` properties) and uses
-                `color_model::lab_offset_128` (at least in samples I've seen).
-
-                This kind of makes sense because RGB is a device-dependent color model,
-                whereas L*a*b* (stored in this property) is device-independent (so it's
-                not redundant to include both). The L*a*b* color also doesn't seem to be
-                affected by the "Tint", whereas the `color_model::bgr_tint` color in
-                `property_type::color` holds tint and factors the tint into the RGB value.
-            0x07:
-              id: palette_guid
-              doc: |
-                the set of used values is shared among colors and files (i.e. this GUID is
-                *not* randomly generated, but reused), the most common are 16 zero bytes
-                (`00000000-0000-0000-0000-000000000000`) which seem to be only used for
-                `color_palette::user`, followed by the second most common
-                `CB 19 CD CC 75 46 5E 4A 8B DA D0 BB BA AB 8A F0`
-                (`cccd19cb-4675-4a5e-8bda-d0bbbaab8af0`; if you search for this GUID [on
-                Google](https://www.google.com/search?q=cccd19cb-4675-4a5e-8bda-d0bbbaab8af0),
-                you actually get some results, which is interesting) only used for
-                `color_palette::user` colors using the CMYK color model
-                (`color_model::cmyk100` or `color_model::cmyk255_i3`).
-
-                You can also find `74 CD 6C FC A8 10 52 41 89 01 A5 1F AC B4 77 85`
-                (`fc6ccd74-10a8-4152-8901-a51facb47785`) in a few sample files, only used
-                for `color_model::spot` colors with `color_palette::pantone_coated`.
-            0x08: special_palette_color_part1
-            0x0b: special_palette_color_id
-            0x0c: special_palette_color_name
       gradient:
         seq:
           - id: unknown1
@@ -1740,6 +1627,7 @@ types:
         0x08: desktop
         0x0a: guides
         0x1a: grid
+        0x5a: grid_2
         0x40: page
       # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l926
       chunk_types:
@@ -1760,11 +1648,18 @@ types:
         encoding: UTF-16LE
         size-eos: true
   ptrt_chunk_data:
+    doc: |
+      This chunk is just like 'bbox', but appears in 'LIST:doc ' as such specifies the extents of
+      the entire drawing rather an an individual page, group, object, etc.
     seq:
-      # Is this really a GUID?
-      - id: value
-        type: guid
-
+      - id: p0_x
+        type: coord
+      - id: p0_y
+        type: coord
+      - id: p1_x
+        type: coord
+      - id: p1_y
+        type: coord
   usdn_chunk_data:
     doc: |
       'usdn' = *U*nique *S*tatic i*D*e*N*tifier (probably)
@@ -3302,6 +3197,132 @@ types:
             - cdrSVGPalette
             - SVGColor # file name (SVGColor.xml)
           doc: SVG Colors
+  color_property_list:
+    seq:
+      - id: color_old
+        type: color
+        if: _root.version < 1300
+      - id: items
+        type: property
+        repeat: until
+        repeat-until: _.type == property_type::end
+        if: _root.version >= 1300
+    types:
+      property:
+        seq:
+          - id: type
+            type: u1
+            enum: property_type
+          - id: len_body
+            type: u4
+            valid:
+              eq: |
+                type == property_type::color
+                  ? 12 :
+                type == property_type::palette_guid
+                  ? 16 :
+                type == property_type::end
+                  ? 0 :
+                  len_body
+          - id: body
+            size: len_body
+            type:
+              switch-on: type
+              cases:
+                property_type::color: color
+                property_type::special_palette_color_lab: color
+                property_type::palette_guid: guid
+                property_type::special_palette_color_part1: special_palette_color_part1
+                property_type::special_palette_color_part2: special_palette_color_part2
+                property_type::special_palette_color_id: palette_color_id
+                property_type::special_palette_color_name: palette_color_name
+            if: type != property_type::end
+      palette_color_id:
+        seq:
+          - id: id
+            type: u2
+          - id: rest
+            size-eos: true
+            valid:
+              eq: '[].as<bytes>'
+      palette_color_name:
+        seq:
+          - id: name
+            type: color_name
+          - id: rest
+            size-eos: true
+            valid:
+              eq: '[].as<bytes>'
+      special_palette_color_part1:
+        seq:
+          - id: palette_guid
+            type: guid
+          - id: name
+            type: color_name
+          - id: special_pal_p1_rest
+            size-eos: true
+      special_palette_color_part2:
+        seq:
+          # this `name_raw` is actually null-terminated, unlike the others
+          - id: name_raw
+            type: color_name
+          - id: special_pal_p2_rest
+            size-eos: true
+        instances:
+          name:
+            # assumes `_root.version >= 1200`
+            value: |
+              name_raw.name.substring(name_raw.name.length - 1, name_raw.name.length) == [0x00, 0x00].to_s('UTF-16LE')
+                ? name_raw.name.substring(0, name_raw.name.length - 1)
+                : name_raw.name
+      color_name:
+        seq:
+          - id: char_len_name
+            type: u4
+          - id: name
+            size: char_len_name * 2
+            type: str
+            encoding: UTF-16LE
+    enums:
+      property_type:
+        0x00: end
+        0x01: color
+        0x03: special_palette_color_part2
+        0x06:
+          id: special_palette_color_lab
+          doc: |
+            in addition to the standard `property_type::color` which seems to be using
+            `color_model::bgr_tint` (whenever found in the same solid fill as
+            `property_type::special_palette_color_lab`), this property appears only
+            for "special palette" colors (as all
+            `property_type::special_palette_color_*` properties) and uses
+            `color_model::lab_offset_128` (at least in samples I've seen).
+
+            This kind of makes sense because RGB is a device-dependent color model,
+            whereas L*a*b* (stored in this property) is device-independent (so it's
+            not redundant to include both). The L*a*b* color also doesn't seem to be
+            affected by the "Tint", whereas the `color_model::bgr_tint` color in
+            `property_type::color` holds tint and factors the tint into the RGB value.
+        0x07:
+          id: palette_guid
+          doc: |
+            the set of used values is shared among colors and files (i.e. this GUID is
+            *not* randomly generated, but reused), the most common are 16 zero bytes
+            (`00000000-0000-0000-0000-000000000000`) which seem to be only used for
+            `color_palette::user`, followed by the second most common
+            `CB 19 CD CC 75 46 5E 4A 8B DA D0 BB BA AB 8A F0`
+            (`cccd19cb-4675-4a5e-8bda-d0bbbaab8af0`; if you search for this GUID [on
+            Google](https://www.google.com/search?q=cccd19cb-4675-4a5e-8bda-d0bbbaab8af0),
+            you actually get some results, which is interesting) only used for
+            `color_palette::user` colors using the CMYK color model
+            (`color_model::cmyk100` or `color_model::cmyk255_i3`).
+
+            You can also find `74 CD 6C FC A8 10 52 41 89 01 A5 1F AC B4 77 85`
+            (`fc6ccd74-10a8-4152-8901-a51facb47785`) in a few sample files, only used
+            for `color_model::spot` colors with `color_palette::pantone_coated`.
+        0x08: special_palette_color_part1
+        0x0b: special_palette_color_id
+        0x0c: special_palette_color_name
   text_style_flags:
     doc-ref: https://community.coreldraw.com/sdk/api/draw/17/c/structfontproperties
     seq:
