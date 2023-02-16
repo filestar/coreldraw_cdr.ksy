@@ -246,7 +246,7 @@ types:
             '"bmp "': bmp_chunk_data
             # '"bmpf"': bmpf_chunk_data
             # '"ppdt"': ppdt_chunk_data
-            # '"ftil"': ftil_chunk_data
+            '"ftil"': ftil_chunk_data
             # '"iccd"': iccd_chunk_data
             '"bbox"': bbox_chunk_data
             '"obbx"': obbx_chunk_data
@@ -425,6 +425,7 @@ types:
               switch-on: type
               cases:
                 'arg_type::loda_coords': loda_coords
+                'arg_type::transform': transform
                 'arg_type::fill_style': fill_style
                 'arg_type::line_style': line_style
                 'arg_type::style_old': style_old
@@ -457,7 +458,18 @@ types:
                 'chunk_types::guides': guides
                 'chunk_types::desktop': desktop
                 'chunk_types::polygon_coords': polygon_coords
+      transform:
+        seq:
+          - id: waldo
+            # FIXME: add data
+            size-eos: true
+            if: _root.version < 400
 
+          # FIXME: test on files versioned 400-1400. Files versioned 1500-2400 have
+          # already been verified to use this format.
+          - id: trafo_id
+            type: u4
+            if: _root.version >= 400
       fill_style:
         seq:
           - id: waldo
@@ -920,7 +932,7 @@ types:
         10: line_style
         20: fill_style
         30: loda_coords
-        100: waldo_trfd
+        100: transform
         200: style_old
         201: style_new
         1000:
@@ -1032,7 +1044,10 @@ types:
           since_version:
             pos: 'offs'
             type: u4
-            valid: 1300
+            valid:
+              any-of:
+                - 1300
+                - 1740
             if: _root.version >= 1300
           tmp_type:
             pos: 'offs + (_root.version >= 1300 ? 8 : 0)'
@@ -1045,36 +1060,13 @@ types:
             type: trafo
             if: is_trafo
       trafo:
-        doc: |
-          See <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-function/matrix#syntax>
-          for an explanation of matrix parameter labels.
-        doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_utils.py#L29
+        
         seq:
           - id: unknown1
             if: _root.version >= 600
             size: 6
-          - id: a
-            -orig-id: m11 # UniConvertor
-            type: f8
-          - id: c
-            -orig-id: m12 # UniConvertor
-            type: f8
-          - id: tx_raw
-            type: f8
-          - id: b
-            -orig-id: m21 # UniConvertor
-            type: f8
-          - id: d
-            -orig-id: m22 # UniConvertor
-            type: f8
-          - id: ty_raw
-            type: f8
-        instances:
-          tx:
-            value: 'tx_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
-          ty:
-            value: 'ty_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
-
+          - id: matrix
+            type: matrix
   outl_chunk_data:
     seq:
       - id: outl_id
@@ -1900,7 +1892,10 @@ types:
 
   # bmpf_chunk_data: {}
   # ppdt_chunk_data: {}
-  # ftil_chunk_data: {}
+  ftil_chunk_data:
+    seq:
+      - id: matrix
+        type: matrix
   # iccd_chunk_data: {}
   bbox_chunk_data:
     doc: |
@@ -2857,6 +2852,33 @@ types:
             0b00: angle
             0b01: smooth
             0b10: symmetrical
+  matrix:
+    doc: |
+      See <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-function/matrix#syntax>
+      for an explanation of matrix parameter labels.
+    doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_utils.py#L29
+    seq:
+      - id: a
+        -orig-id: m11 # UniConvertor
+        type: f8
+      - id: c
+        -orig-id: m12 # UniConvertor
+        type: f8
+      - id: tx_raw
+        type: f8
+      - id: b
+        -orig-id: m21 # UniConvertor
+        type: f8
+      - id: d
+        -orig-id: m22 # UniConvertor
+        type: f8
+      - id: ty_raw
+        type: f8
+    instances:
+      tx:
+        value: 'tx_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
+      ty:
+        value: 'ty_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
   angle:
     seq:
       - id: raw
