@@ -1004,13 +1004,13 @@ types:
           cases:
             true: u2
             _: u4
-      - id: unknown1
+      - id: unknown
         type:
           switch-on: _root.precision_16bit
           cases:
             true: u2
             _: u4
-        doc: In the one sample file I've tested, this field is set to 0xFFFF
+        valid: 0xffff
     instances:
       arg_offsets:
         doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRParser.cpp#L1336-L1338
@@ -1021,44 +1021,40 @@ types:
             true: u2
             _: u4
         repeat: expr
-        repeat-expr: num_of_args
-      trafos:
-        type: trafo_wrapper(arg_offsets[_index])
+        repeat-expr: num_of_args + 1
+      args:
+        type: arg(arg_offsets[_index], arg_offsets[_index + 1] - arg_offsets[_index])
         repeat: expr
         repeat-expr: num_of_args
-      unknown2:
-        pos: _io.size - 8
-        size: 8
-        valid: '[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]'
-        # FIXME: I haven't checked if this condition is correct
-        if: _root.version >= 1300
     types:
-      trafo_wrapper:
+      arg:
         params:
-          - id: offs
+          - id: ofs_body
             type: u4
-        # FIXME: at this point it might make sense to add a type with `since_version`, `tmp_type`
-        # and `body` as fields (with four bytes of conditional padding between the first two), then
-        # replace these instances with a single instance of that new type.
+          - id: len_body
+            type: u4
         instances:
-          since_version:
-            pos: 'offs'
-            type: u4
-            valid:
-              any-of:
-                - 1300
-                - 1740
-            if: _root.version >= 1300
-          tmp_type:
-            pos: 'offs + (_root.version >= 1300 ? 8 : 0)'
-            type: u2
-          is_trafo:
-            value: tmp_type == 0x08 and _root.version >= 500
-            doc: 'note: only supporting `_root.version >= 500` for now'
           body:
-            pos: 'offs + (_root.version >= 1300 ? 8 : 0) + tmp_type._sizeof'
+            pos: ofs_body
+            size: len_body
+            type: arg_body
+      arg_body:
+        seq:
+          - id: since_version
+            type: u4
+            if: _root.version >= 1300
+          - id: len_body
+            type: u4
+            if: _root.version >= 1300
+          - id: type
+            type: u2
+          - id: trafo
             type: trafo
             if: is_trafo
+        instances:
+          is_trafo:
+            value: type == 0x08 and _root.version >= 500
+            doc: 'note: only supporting `_root.version >= 500` for now'
       trafo:
         seq:
           - id: unknown1
