@@ -887,18 +887,32 @@ types:
       bitmap:
         doc-ref: https://github.com/LibreOffice/libcdr/blob/4b28c1a10f06e0a610d0a740b8a5839dcec9dae4/src/lib/CDRParser.cpp#L1468
         seq:
-          - id: x1
+          # The meaning of the following fields is probably the same as in 'obbx_chunk_data'
+          - id: p0_x
             type: coord
-          - id: y1
+          - id: p0_y
             type: coord
-          - id: x2
+          - id: p1_x
             type: coord
-          - id: y2
+          - id: p1_y
             type: coord
+          - id: p2_x
+            type: coord
+          - id: p2_y
+            type: coord
+          - id: p3_x
+            type: coord
+          - id: p3_y
+            type: coord
+
           - id: unknown1
-            size: 16
+            size: 4
+          - id: width
+            type: u4
+          - id: height
+            type: u4
           - id: unknown2
-            size: 16
+            type: u4
           - id: image_id
             type: u4
           - id: unknown3
@@ -1834,24 +1848,34 @@ types:
             true: u2
             _: u4
       - id: unknown1
-        size: '_root.version < 600 ? 14 : _root.version < 700 ? 46 : 50'
+        size: '_root.version < 600 ? 14 : 46'
+
+      # Seen value: 78. This matches 'len_body' in 'extended_data', which means it is probably
+      # computed the same way. I use min: 78 here because if my understanding is correct, this
+      # value includes the size of 'palette' as well.
+      - id: len_body
+        type: u4
+        valid:
+          min: 78
+        if: _root.version >= 700
       - id: color_model
         type: u4
       - id: unknown2
-        size: 4
+        type: u4
       - id: width
         type: u4
       - id: height
         type: u4
       - id: unknown3
-        size: 4
+        type: u4
       - id: bpp
         type: u4
-      - id: unknown4
-        size: 4
+      - id: line_size
+        type: u4
       - id: bmp_size
         type: u4
-      - id: unknown5
+        valid: line_size * height
+      - id: unknown4
         size: 32
       - id: palette
         if: 'bpp < 24 and color_model != 5 and color_model != 6 and color_model != 99'
@@ -1859,10 +1883,15 @@ types:
       - id: bitmap
         size: bmp_size
         if: bmp_size <= bmp_size_max
+      - id: ext_data_flags
+        type: u2
+      - id: ext_data_len
+        type: u4
       - id: ext_data
         type: extended_data
-        # todo: there is probably a more elegant, intended way to determine whether or not to read this.
-        if: bmp_size <= bmp_size_max and _io.size - _io.pos >= 2
+        # 'ext_data_len' counts 'ext_data_flags' and 'ext_data_len'
+        size: ext_data_len - 6
+        if: ext_data_flags == 0x4952
     instances:
       bmp_size_max:
         value: '(_io.size - _io.pos).as<u4>'
@@ -1896,16 +1925,42 @@ types:
                  value: 'b | (g << 8) | (r << 16)'
       extended_data:
         seq:
-          - id: flags
-            type: u2
-          - id: length
+          # FIXME: these fields (and earlier, likely starting with 'ext_data_flags') seem to exactly match those in
+          # the root of 'bmp_chunk_data'; perhaps they should be specified in a common structure.
+
+          - id: unknown1
             type: u4
-          - id: unknown
-            size: 72
-            if: flags == 0x4952
+          
+          # Seen value: 78. This matches the difference in offset between the beginnings of '_parent.ext_data_flags'
+          # and 'alpha_data'
+          - id: len_body
+            type: u4
+            valid: 78
+          - id: color_model
+            type: u4
+          - id: unknown2
+            type: u4
+          - id: width
+            type: u4
+          - id: height
+            type: u4
+          - id: unknown3
+            type: u4
+          - id: bpp
+            type: u4
+          - id: line_size
+            type: u4
+          - id: alpha_data_size
+            type: u4
+            valid: line_size * height
+          - id: unknown4
+            size: 16
+          - id: unknown5
+            type: u4
+          - id: unknown6
+            size: 12
           - id: alpha_data
-            size: length - 78
-            if: flags == 0x4952
+            size: alpha_data_size
 
   # bmpf_chunk_data: {}
   # ppdt_chunk_data: {}
