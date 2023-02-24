@@ -1889,8 +1889,7 @@ types:
         type: u4
       - id: ext_data
         type: extended_data
-        # 'ext_data_len' counts 'ext_data_flags' and 'ext_data_len'
-        size: ext_data_len - 6
+        size: ext_data_len - ext_data_flags._sizeof - ext_data_len._sizeof
         if: ext_data_flags == 0x4952
     instances:
       bmp_size_max:
