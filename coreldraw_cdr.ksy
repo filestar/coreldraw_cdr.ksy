@@ -1192,8 +1192,8 @@ types:
           cases:
             fill_types::uniform: solid
             fill_types::fountain: gradient
+            fill_types::color_bitmap: image_fill_data
             # 7: pattern
-            # 9: image_fill_data # bitmap
             # 10: image_fill_data # full color
             # 11: texture
       - id: fild_rest
@@ -1526,12 +1526,60 @@ types:
                 : tmp_height / (_root.version < 600 ? 1000.0 : 254000.0)
           is_relative:
             value: '((flags & 0x04) != 0) and (_root.version < 900)'
+      image_fill_data:
+        seq:
+          - id: versioned_data
+            type: versioned_image_fill
+            repeat: eos
+            if: _root.version >= 1300
+        types:
+          versioned_image_fill:
+            seq:
+              - id: since_version
+                type: u4
+              - id: len_body
+                type: u4
+              - id: body
+                size: len_body
+                type:
+                  switch-on: since_version
+                  cases:
+                    1600: image_fill_16
+                    1300: image_fill_13
+          image_fill_16:
+            seq:
+              - id: unknown1
+                size: 4
+              - id: tmp_width
+                type: u4
+              - id: tmp_height
+                type: u4
+              - id: unknown2
+                size: 4
+          image_fill_13:
+            seq:
+              - id: unknown1
+                size: 4
+              - id: unknown2
+                size: 4
+              - id: unknown3
+                size: 8
+              - id: unknown4 # same as image_fill_16's `unknown1`
+                size: 4
+              - id: tmp_width
+                type: u4
+              - id: tmp_height
+                type: u4
+              - id: unknown5 # same as image_fill_16's `unknown2`
+                size: 4
+              - id: image_id
+                type: u4
       texture:
         seq:
           - id: data
-            type: image_fill_data
+            type: image_fill_data_old
             if: _root.version >= 600
-      image_fill_data:
+      image_fill_data_old:
         seq:
           - id: skip_x3
             type: skip_x3_optional
@@ -1848,53 +1896,96 @@ types:
             true: u2
             _: u4
       - id: unknown1
-        size: '_root.version < 600 ? 14 : 46'
+        size: 4
+      - size: 0
+        if: ext_header_pos < 0
+      - id: ext_header
+        type: extended_header
+        if: _root.version >= 600
 
-      # Seen value: 78. This matches 'len_body' in 'extended_data', which means it is probably
-      # computed the same way. I use min: 78 here because if my understanding is correct, this
-      # value includes the size of 'palette' as well.
-      - id: len_body
-        type: u4
-        valid:
-          min: 78
-        if: _root.version >= 700
-      - id: color_model
-        type: u4
-      - id: unknown2
-        type: u4
-      - id: width
-        type: u4
-      - id: height
-        type: u4
-      - id: unknown3
-        type: u4
-      - id: bpp
-        type: u4
-      - id: line_size
-        type: u4
-      - id: bmp_size
-        type: u4
-        valid: line_size * height
-      - id: unknown4
-        size: 32
-      - id: palette
-        if: 'bpp < 24 and color_model != 5 and color_model != 6 and color_model != 99'
-        type: palette_type
-      - id: bitmap
-        size: bmp_size
-        if: bmp_size <= bmp_size_max
-      - id: ext_data_flags
-        type: u2
-      - id: ext_data_len
-        type: u4
-      - id: ext_data
-        type: extended_data
-        size: ext_data_len - ext_data_flags._sizeof - ext_data_len._sizeof
-        if: ext_data_flags == 0x4952
+      # Usually includes one or two: one for colour, and optionally another for alpha
+      - id: bitmaps
+        type: bitmap
+        repeat: eos
     instances:
-      bmp_size_max:
-        value: '(_io.size - _io.pos).as<u4>'
+      ext_header_pos:
+        value: _io.pos
     types:
+      extended_header:
+        seq:
+          # Based on the similarity between the seen values of this field and `bitmap.flags`, it's
+          # possible that these are actually the same field, and the set bits determine what follows.
+          - id: flags
+            type: u2
+            valid: 0x4955
+          - id: unknown1
+            size: 2
+          - id: bmp_size
+            type: u4
+            valid: _io.size - _parent.ext_header_pos
+          - id: unknown2
+            size: 4
+          - id: color_offset
+            type: u4
+            valid: sizeof<extended_header>
+            doc: |
+              Offset in bytes from the beginning of `ext_header` to the beginning of the color
+              bitmap in `_parent.bitmaps`.
+          - id: alpha_offset
+            type: u4
+            doc: |
+              Offset in bytes from the beginning of `ext_header` to the beginning of the alpha
+              bitmap in `_parent.bitmaps`. Set to 0 if there is no alpha bitmap.
+          - id: unknown3
+            size: 12
+      bitmap:
+        seq:
+          - id: flags
+            type: u2
+            valid: 0x4952
+          - id: len_body
+            type: u4
+          - id: body
+            type: bitmap_body
+            size: len_body - flags._sizeof - len_body._sizeof
+      bitmap_body:
+        seq:
+          - id: unknown1
+            type: u4
+          # Seen value: 78. This matches the difference in offset between the beginnings of '_parent.flags'
+          # and 'alpha_data'
+          - id: len_body
+            type: u4
+            valid:
+              min: 78
+          - id: color_model
+            type: u4
+          - id: unknown2
+            type: u4
+          - id: width
+            type: u4
+          - id: height
+            type: u4
+          - id: unknown3
+            type: u4
+          - id: bpp
+            type: u4
+          - id: line_size
+            type: u4
+          - id: bmp_size
+            type: u4
+            valid: line_size * height
+          - id: unknown4
+            size: 16
+          - id: unknown5
+            type: u4
+          - id: unknown6
+            size: 12
+          - id: palette
+            if: 'bpp < 24 and color_model != 5 and color_model != 6 and color_model != 99'
+            type: palette_type
+          - id: bitmap
+            size: bmp_size
       palette_type:
         seq:
           - id: unknown
@@ -1922,44 +2013,6 @@ types:
             instances:
               color_value:
                  value: 'b | (g << 8) | (r << 16)'
-      extended_data:
-        seq:
-          # FIXME: these fields (and earlier, likely starting with 'ext_data_flags') seem to exactly match those in
-          # the root of 'bmp_chunk_data'; perhaps they should be specified in a common structure.
-
-          - id: unknown1
-            type: u4
-          
-          # Seen value: 78. This matches the difference in offset between the beginnings of '_parent.ext_data_flags'
-          # and 'alpha_data'
-          - id: len_body
-            type: u4
-            valid: 78
-          - id: color_model
-            type: u4
-          - id: unknown2
-            type: u4
-          - id: width
-            type: u4
-          - id: height
-            type: u4
-          - id: unknown3
-            type: u4
-          - id: bpp
-            type: u4
-          - id: line_size
-            type: u4
-          - id: alpha_data_size
-            type: u4
-            valid: line_size * height
-          - id: unknown4
-            size: 16
-          - id: unknown5
-            type: u4
-          - id: unknown6
-            size: 12
-          - id: alpha_data
-            size: alpha_data_size
 
   # bmpf_chunk_data: {}
   # ppdt_chunk_data: {}
