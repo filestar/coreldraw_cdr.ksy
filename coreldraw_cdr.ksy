@@ -684,20 +684,68 @@ types:
             type: coord
       opacity:
         seq:
-          - id: unknown
-            size: '_root.version < 1300 ? 10 : 14'
-          - id: value_raw
-            type: u2
-          # FIXME: I'm not sure what the real structure is here.
-          - size: 69
-            if: _io.size >= 125
-          - id: merge_mode
-            type: u1
-            enum: merge_modes
-            if: _io.size >= 125
-        instances:
-          value:
-            value: value_raw / 1000.0
+          - id: versioned_data
+            type: versioned_opacity
+            repeat: eos
+            if: _root.version >= 1300
+          - id: old_data
+            type: opacity_old
+            if: _root.version < 1300
+        types:
+          versioned_opacity:
+            seq:
+              - id: since_version
+                type: u4
+              - id: len_body
+                type: u4
+              - id: body
+                size: len_body
+                type:
+                  switch-on: since_version
+                  cases:
+                    1300: opacity_13
+          opacity_13:
+            seq:
+              - id: unknown1
+                size: 6
+              - id: value_raw
+                type: u2
+              - id: unknown2
+                size: 69
+              - id: merge_mode
+                type: u1
+                enum: merge_modes
+              - id: unknown3
+                size: 27
+              # I know this is a fill id because if it's set to a very large value (without an
+              # appropriate number of fill ids), CorelDRAW gives the error message "invalid fill
+              # ID" or something similar. Just a guess, but it likely refers to a fill to use as an
+              # opacity.
+              - id: fill_id
+                type: u4
+              - id: unknown4
+                size: 8
+            instances:
+              value:
+                value: value_raw / 1000.0
+          opacity_old:
+            seq:
+              - id: unknown1
+                size: 10
+              - id: value_raw
+                type: u2
+              - id: unknown2
+                size: 69
+                if: _io.size >= 125
+              - id: merge_mode
+                type: u1
+                enum: merge_modes
+                if: _io.size >= 125
+              - id: unknown3
+                size: _io.size - _io.pos
+            instances:
+              value:
+                value: value_raw / 1000.0
         enums:
           # https://community.coreldraw.com/sdk/api/draw/17/e/cdrmergemode
           merge_modes:
@@ -1291,6 +1339,7 @@ types:
                     - 0
                     - 1 # CorelDRAW 7: DRAW/SAMPLES/{7EFFECTS.CDR,CAMERA.CDR}, CorelDRAW 8: DRAW/SAMPLES/CAMERA.CDR
                     - 13 # CorelDRAW 7: TUTORS/DRAW/FISHEYE.CDR
+                    - 1048576
                 doc: |
                   see <https://community.coreldraw.com/talk/coreldraw_graphics_suite_x5/f/coreldraw-x5/37492/coreldraw-x5-icons-inside-color-indicator-what-do-they-mean>
                   for how this is displayed in CorelDRAW
