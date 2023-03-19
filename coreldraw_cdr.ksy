@@ -433,6 +433,8 @@ types:
                 'arg_type::name': name
                 'arg_type::polygon_transform': polygon_transform
                 'arg_type::opacity': opacity
+                'arg_type::powerclip_style': powerclip_style
+                'arg_type::contnr': contnr
                 'arg_type::page_size': page_size
                 'arg_type::guid_layer': guid
                 'arg_type::palt': palt
@@ -682,6 +684,13 @@ types:
             type: coord
           - id: cy
             type: coord
+      powerclip_style:
+        seq:
+          - id: powerclip_id_raw
+            type: u4
+        instances:
+          powerclip_id:
+            value: powerclip_id_raw >> 1
       opacity:
         seq:
           - id: versioned_data
@@ -777,6 +786,15 @@ types:
             33: dodge
             34: burn
             36: exclusion
+      contnr:
+        seq:
+          - id: powerclip_id_raw
+            type: u4
+          - id: unknown
+            size: 12
+        instances:
+          powerclip_id:
+            value: (powerclip_id_raw + 1) >> 1
       page_size:
         seq:
           - id: width
@@ -1003,6 +1021,7 @@ types:
         2000:
           id: palt
           doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_const.py#L42
+        3500: powerclip_style
         8000: opacity
         8005:
           id: contnr
