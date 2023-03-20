@@ -1771,11 +1771,10 @@ types:
       - id: is_hidden
         doc: |
           most commonly used for layers (because "Grid" layers are hidden by
-          default, in which case the `flags[1] & 0x01` bit is set), can be also
-          applied to groups and objects
+          default, in which case the `flags[1] & 0x01` bit is set)
 
-          probably since CorelDRAW X7.4 (because the `Shape.Visible` property is
-          not present in
+          can be also applied to groups and objects probably since CorelDRAW
+          X7.4 (because the `Shape.Visible` property is not present in
           <https://community.coreldraw.com/sdk/api/draw/17/c/shape>, but is
           listed in https://community.coreldraw.com/sdk/api/draw/17.4/c/shape)
         type: b1
@@ -1842,16 +1841,6 @@ types:
         type: u1
         enum: chunk_types
     enums:
-      # TODO: delete
-      # # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l490
-      # layer_types:
-      #   0x00: layer (nothing)
-      #   0x08: desktop (non_printable)
-      #   0x0a: guides (non_printable, unknown1)
-      #   0x1a: grid (is_locked, is_non_printable, unknown1)
-      #   0x5a: grid_2 (unknown2, is_locked, is_non_printable, unknown1)
-      #   0x40: page (unknown2)
-
       # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l926
       chunk_types:
         0x08: object # "LIST:obj " (most common value for "LIST:obj ")
