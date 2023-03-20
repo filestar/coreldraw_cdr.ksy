@@ -434,7 +434,7 @@ types:
                 'arg_type::polygon_transform': polygon_transform
                 'arg_type::opacity': opacity
                 'arg_type::powerclip_style': powerclip_style
-                'arg_type::contnr': contnr
+                'arg_type::container': container
                 'arg_type::page_size': page_size
                 'arg_type::guid_layer': guid
                 'arg_type::palt': palt
@@ -786,7 +786,7 @@ types:
             33: dodge
             34: burn
             36: exclusion
-      contnr:
+      container:
         seq:
           - id: powerclip_id_raw
             type: u4
@@ -1024,7 +1024,7 @@ types:
         3500: powerclip_style
         8000: opacity
         8005:
-          id: contnr
+          id: container
           doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l486
         11000: polygon_transform
         12010:
@@ -1744,36 +1744,124 @@ types:
   # arrw_chunk_data: {}
   flgs_chunk_data:
     seq:
-      - id: flags
-        size: 4
-    instances:
-      chunk_type:
-        value: flags[3] & 0xff
+      - type: b1
+      - id: unknown1
+        type: b1
+      - type: b1 # GUESS: is_part_of_blend_group
+      - id: is_non_printable
+        type: b1
+      - id: is_locked
+        doc: '"locked" means not editable; can be used for layers, groups, objects'
+        type: b1
+      - id: has_extrude_group
+        type: b1
+      - id: unknown2
+        doc: |
+          Seen to be used for pages, layers, groups, link groups and objects.
+
+          It seems to be propagated to parent entities which the entity is part
+          of - for example, if set on an object ("LIST:obj "), it is also set on
+          the parent "LIST:layr" and also on the parent page ("LIST:page") of
+          this layer. But it can be apparently set on a page/layer/group on its
+          own, even if no child entity has it.
+        type: b1
+      - id: is_object_data_changed
+        doc: see "Object Data Manager"; can be set for groups and objects
+        type: b1
+      - id: is_hidden
+        doc: |
+          most commonly used for layers (because "Grid" layers are hidden by
+          default, in which case the `flags[1] & 0x01` bit is set), can be also
+          applied to groups and objects
+
+          probably since CorelDRAW X7.4 (because the `Shape.Visible` property is
+          not present in
+          <https://community.coreldraw.com/sdk/api/draw/17/c/shape>, but is
+          listed in https://community.coreldraw.com/sdk/api/draw/17.4/c/shape)
+        type: b1
+      - id: unknown3
+        type: b1
+      - type: b1
+      - id: unknown4
+        type: b1
+      - id: is_clone_object
+        doc: |
+          Download a CDR sample file where this flag occurs:
+          ```
+          curl -LO ftp://ftp.corel.com/pub/ServiceBureau/Corel_PerfectImage/Test_Output_Files/Corel_PerfectImage_FRANCHISE-Testfile/Corel_PerfectImage_FRANCHISE-Testfile.cdr
+          ````
+
+          In the Object Manager (with the "Show Object Properties" option
+          enabled), the clone object in
+          `Corel_PerfectImage_FRANCHISE-Testfile.cdr` is displayed like this:
+
+          * Polygon with 9 Sides - Fill: Fountain, Outline: none [StaticID: 9,
+            flags: [0x24, 0x02, 0x00, 0x08]]
+            * __Clone Polygon__ with 9 Sides - Fill: Fountain, Outline: none [StaticID: 1999488,
+              flags: [0x01, 0x12, 0x00, 0x08]]
+
+              (this is the "clone object" with the `flags[1] & 0x10` flag set)
+
+            * Extrude Group - Fill: Fill Color, Outline: None [StaticID: 1999493,
+              flags: [0x01, 0x00, 0x00, 0x18]]
+        type: b1
+      - type: b1
+      - type: b1 # GUESS: has_callout
+      - id: is_last_and_unpaired_page
+        doc: |
+          Set on the last page in a document with "Facing pages" enabled in Page
+          Layout options if this page is not part of a spread.
+
+          For example, with "Start on: Right side", if the pages are ["Page 1",
+          "Page 2-3", "Page 4"], the last "Page 4" will have this flag set.
+          However, if the pages are only ["Page 1", "Page 2-3"], the last page
+          "Page 2-3" doesn't have this flag set, because it's a page spread, not
+          an individual page.
+        type: b1
+      - id: is_master
+        doc: master page or master layer
+        type: b1
+      - type: b2
+      - id: has_lens
+        doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l942
+        type: b1
+      - id: is_powerclip_container
+        doc: |
+          specifies whether "LIST:obj " defines a PowerClip container, an object which references a
+          PowerClip group.
+        type: b1
+      - type: b2
+      - id: is_powerclip_group_def
+        doc: |
+          specifies whether "LIST:grp " defines a PowerClip group
+
+          all "LIST:grp " chunks directly inside "LIST:clpt" (which is a
+          "LIST:doc " subchunk) have this flag set
+        type: b1
+      - id: chunk_type
+        type: u1
         enum: chunk_types
-      is_master_page:
-        value: flags[2] != 0
-        if: chunk_type == chunk_types::page
-        doc: flags[2] is `0x00` or `0x01`
-        doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRContentCollector.cpp#L195
-      layer_type:
-        value: flags[0] & 0xff
-        enum: layer_types
-        if: chunk_type == chunk_types::layer
     enums:
-      # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l490
-      layer_types:
-        0x00: layer
-        0x08: desktop
-        0x0a: guides
-        0x1a: grid
-        0x5a: grid_2
-        0x40: page
+      # TODO: delete
+      # # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l490
+      # layer_types:
+      #   0x00: layer (nothing)
+      #   0x08: desktop (non_printable)
+      #   0x0a: guides (non_printable, unknown1)
+      #   0x1a: grid (is_locked, is_non_printable, unknown1)
+      #   0x5a: grid_2 (unknown2, is_locked, is_non_printable, unknown1)
+      #   0x40: page (unknown2)
+
       # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l926
       chunk_types:
-        0x08: object
-        0x10: group
-        0x90: page
-        0x98: layer
+        0x08: object # "LIST:obj " (most common value for "LIST:obj ")
+        0x09: text # "LIST:obj " (paragraph or artistic text)
+        0x10: group # "LIST:grp " (most common value for "LIST:grp ")
+        0x11: group_i17 # "LIST:grp " (CorelDRAW 8: 'DRAW/SAMPLES/DRAW QUICK REF.CDR')
+        0x18: link_group # "LIST:lnkg"
+        0x20: symbol # "LIST:symb"
+        0x90: page # "LIST:page"
+        0x98: layer # "LIST:layr"
   spid_chunk_data:
     seq:
       - id: value
