@@ -440,6 +440,7 @@ types:
                 'arg_type::palt': palt
                 'arg_type::unknown_num_1': unknown_num
                 'arg_type::unknown_num_2': unknown_num
+                'arg_type::unknown_num_3': unknown_num
 
       loda_coords:
         seq:
@@ -1049,6 +1050,7 @@ types:
             particular for the "Guides", "Desktop" and "Document Grid" layers in
             the master page which are then referenced in content pages via the
             same GUID
+        40200: unknown_num_3
       chunk_types:
         0x00: layer
         0x01: rectangle
