@@ -252,7 +252,7 @@ types:
             '"obbx"': obbx_chunk_data
             '"spnd"': spnd_chunk_data
             '"uidr"': uidr_chunk_data
-            # '"vpat"': vpat_chunk_data
+            '"vpat"': vpat_chunk_data
             '"font"': font_chunk_data
             '"stlt"': stlt_chunk_data
             '"txsm"': txsm_chunk_data
@@ -717,11 +717,11 @@ types:
           opacity_13:
             seq:
               - id: unknown1
-                size: 6
-              - id: value_raw
-                type: u2
+                size: 61
+              - id: value
+                type: f8
               - id: unknown2
-                size: 69
+                size: 8
               - id: merge_mode
                 type: u1
                 enum: merge_modes
@@ -735,9 +735,6 @@ types:
                 type: u4
               - id: unknown4
                 size: 8
-            instances:
-              value:
-                value: value_raw / 1000.0
           opacity_old:
             seq:
               - id: unknown1
@@ -2223,7 +2220,41 @@ types:
         size: 36
       - id: color
         type: color
-  # vpat_chunk_data: {}
+  vpat_chunk_data:
+    seq:
+      - id: unknown1
+        type: u4
+        # just being extremely conservative for now, as I don't have time to check for breakage.
+        if: _root.version == 1600
+      - id: data
+        type: cmx3
+        # see above
+        if: '_root.version == 1600 and unknown1 == 8'
+    types:
+      # TODO: this should probably end up in a separate KSY spec.
+      cmx3:
+        seq:
+          - id: magic
+            contents: CMX3
+          - id: len_format
+            type: u4
+          - id: format
+            size: len_format
+            type: format_data
+          - id: rest
+            size-eos: true
+      format_data:
+        seq:
+          - id: len_format_string
+            type: u4
+          - id: format_string
+            size: len_format_string
+            type: str
+          - id: is_compressed_raw
+            type: u1
+        instances:
+          is_compressed:
+            value: is_compressed_raw != 0
   font_chunk_data:
     seq:
       - id: font_id
