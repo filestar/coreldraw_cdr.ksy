@@ -12,6 +12,8 @@ meta:
   encoding: ASCII
   endian: le
   bit-endian: le
+  imports:
+    - cmx3
 doc: |
   A native file format of CorelDRAW.
 
@@ -2230,31 +2232,6 @@ types:
         type: cmx3
         # see above
         if: '_root.version == 1600 and unknown1 == 8'
-    types:
-      # TODO: this should probably end up in a separate KSY spec.
-      cmx3:
-        seq:
-          - id: magic
-            contents: CMX3
-          - id: len_format
-            type: u4
-          - id: format
-            size: len_format
-            type: format_data
-          - id: rest
-            size-eos: true
-      format_data:
-        seq:
-          - id: len_format_string
-            type: u4
-          - id: format_string
-            size: len_format_string
-            type: str
-          - id: is_compressed_raw
-            type: u1
-        instances:
-          is_compressed:
-            value: is_compressed_raw != 0
   font_chunk_data:
     seq:
       - id: font_id
