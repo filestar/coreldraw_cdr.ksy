@@ -473,29 +473,36 @@ types:
     instances:
       ofs_body:
         value: _io.pos
-      values:
+      bboxes:
         pos: ofs_body + offsets[0]
-        type: value_maybe
+        type: points_list(2)
         repeat: until
         repeat-until: _.type != 1
+      num_points:
+        pos: ofs_body + offsets[8]
+        type: u4
+      points:
+        pos: ofs_body + offsets[8] + 4
+        type: points_list(num_points)
     types:
-      value_maybe:
+      point:
+        seq:
+          - id: x
+            type: coord
+          - id: y
+            type: coord
+      points_list:
+        params:
+          - id: num_points
+            type: u4
         seq:
           - id: type
             type: u1
-          - id: value
-            type: value
+          - id: points
+            type: point
+            repeat: expr
+            repeat-expr: num_points
             if: type == 1
-      value:
-        seq:
-          - id: x0
-            type: coord
-          - id: y0
-            type: coord
-          - id: x1
-            type: coord
-          - id: y1
-            type: coord
   meta_chunk_data:
     seq:
       - id: unknown1
