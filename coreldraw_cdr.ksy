@@ -1398,77 +1398,101 @@ types:
                 value: overprint_raw != 0
       gradient:
         seq:
-          - id: unknown1
-            size: '_root.version >= 1300 ? 8 : 2'
-          - id: type
-            type: u1
-          - id: unknown2
-            size: |
-              _root.version >= 1300 ? 17
-                : _root.version >= 600 ? 19
-                  : 11
-          - id: edge_offset
-            type:
-              switch-on: _root.version >= 600 and _root.version < 1300
-              cases:
-                true: s4
-                _: s2
-          - id: angle
-            type: angle
-          - id: center_x_offset
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: s2
-                _: s4
-          - id: center_y_offset
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: s2
-                _: s4
-          - id: unknown3
-            if: _root.version >= 600
-            size: 2
-          - id: mode_raw
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: u2
-                _: u4
-          - id: mid_point_raw
-            type: u1
-          - id: unknown4
-            size: 1
-          - id: num_stops_raw
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: u2
-                _: u4
-          - id: unknown5
+          - id: versioned_data
+            type: versioned_gradient
+            repeat: eos
             if: _root.version >= 1300
-            size: 3
-          - id: stops
-            type: stop
-            repeat: expr
-            repeat-expr: num_stops
-          - id: unknown6
-            size: 3
-            if: _root.version >= 1300
-          - id: trafo
-            type: transformation
-            # FIXME: `version >= 1600` may not be accurate due to a lack of available
-            # sample files (but it's not present in 1500 and it is present in 1700)
-            if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
-        instances:
-          mode:
-            value: 'mode_raw & 0xff'
-          mid_point:
-            value: mid_point_raw / 100.0
-          num_stops:
-            value: 'num_stops_raw & 0xffff'
+          - id: gradient_old
+            type: gradient_data
+            if: _root.version < 1300
         types:
+          versioned_gradient:
+            seq:
+              - id: since_version
+                type: u4
+              - id: len_body
+                type: u4
+              - id: body
+                size: len_body
+                type:
+                  switch-on: since_version
+                  cases:
+                    1300: gradient_data
+          # ordinarily I would split this into `gradient_13` and `gradient_old`, but the cases are
+          # so similar that I decided to leave them together.
+          gradient_data:
+            seq:
+              - id: unknown1
+                size: 2
+                if: _root.version < 1300
+              - id: type
+                type: u1
+              - id: unknown2
+                size: |
+                  _root.version >= 1300 ? 17
+                    : _root.version >= 600 ? 19
+                      : 11
+              - id: edge_offset
+                type:
+                  switch-on: _root.version >= 600 and _root.version < 1300
+                  cases:
+                    true: s4
+                    _: s2
+              - id: angle
+                type: angle
+              - id: center_x_offset
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: s2
+                    _: s4
+              - id: center_y_offset
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: s2
+                    _: s4
+              - id: unknown3
+                if: _root.version >= 600
+                size: 2
+              - id: mode_raw
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: u2
+                    _: u4
+              - id: mid_point_raw
+                type: u1
+              - id: unknown4
+                size: 1
+              - id: num_stops_raw
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: u2
+                    _: u4
+              - id: unknown5
+                if: _root.version >= 1300
+                size: 3
+              - id: stops
+                type: stop
+                repeat: expr
+                repeat-expr: num_stops
+              - id: unknown6
+                size: 3
+                if: _root.version >= 1300
+              - id: trafo
+                type: transformation
+                # FIXME: `version >= 1600` may not be accurate due to a lack of available
+                # sample files (but it's not present in 1500 and it is present in 1700)
+                if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
+            instances:
+              mode:
+                value: 'mode_raw & 0xff'
+              mid_point:
+                value: mid_point_raw / 100.0
+              num_stops:
+                value: 'num_stops_raw & 0xffff'
           stop:
             seq:
               # Byte size of one `stop` entry in each CDR version for which I
