@@ -1400,6 +1400,8 @@ types:
         seq:
           - id: versioned_data
             type: versioned_gradient
+            # FIXME: this should be repeat: eos, but gradient_data leaves some bytes behind
+            # sometimes, leading to a parse error
             repeat: eos
             if: _root.version >= 1300
           - id: gradient_old
@@ -1413,7 +1415,10 @@ types:
               - id: len_body
                 type: u4
               - id: body
-                size: len_body
+                # FIXME: len_body is not large enough for the current `gradient_data` spec.
+                # I'm guessing either the `gradient_data` spec contains too much stuff, or this is
+                # not truly a version + length structure.
+                #size: len_body
                 type:
                   switch-on: since_version
                   cases:
@@ -1486,6 +1491,10 @@ types:
                 # FIXME: `version >= 1600` may not be accurate due to a lack of available
                 # sample files (but it's not present in 1500 and it is present in 1700)
                 if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
+              - id: unknown7
+                size: 2
+                # TODO: actually check this condition on more than one file
+                if: _root.version >= 1300
             instances:
               mode:
                 value: 'mode_raw & 0xff'
