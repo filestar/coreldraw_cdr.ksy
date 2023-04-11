@@ -1492,7 +1492,7 @@ types:
                 # sample files (but it's not present in 1500 and it is present in 1700)
                 if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
               - id: unknown7
-                size: 2
+                size: 58
                 # TODO: actually check this condition on more than one file
                 if: _root.version >= 1300
             instances:
