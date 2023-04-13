@@ -1491,10 +1491,21 @@ types:
                 # FIXME: `version >= 1600` may not be accurate due to a lack of available
                 # sample files (but it's not present in 1500 and it is present in 1700)
                 if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
+
+              # FIXME: All fields past this point were recently added to the spec and probably don't
+              # exist in older file versions. In fact, that seems to be implied by the FIXME right above this.
               - id: unknown7
-                size: 58
-                # TODO: actually check this condition on more than one file
-                if: _root.version >= 1300
+                size: 8
+              - id: negative_height
+                type: f8
+              - id: width
+                type: f8
+              - id: unknown8
+                size: 24
+              - id: ext_stop_properties
+                type: extended_stop_properties
+                repeat: expr
+                repeat-expr: num_stops
             instances:
               mode:
                 value: 'mode_raw & 0xff'
@@ -1567,6 +1578,20 @@ types:
               - id: height_rel
                 type: f8
                 doc: height of the fill relative to the object height
+          extended_stop_properties:
+            seq:
+              - id: opacity
+                type: u1
+              - id: unknown1
+                size: 2
+                valid: '[0x00, 0x00]'
+              - id: mid_point_raw
+                type: u1
+              - id: unknown2
+                size: 1
+            instances:
+              mid_point:
+                value: mid_point_raw / 100.0
       pattern:
         seq:
           - id: unknown1
