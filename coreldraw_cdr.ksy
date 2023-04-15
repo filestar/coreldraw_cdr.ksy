@@ -1492,20 +1492,10 @@ types:
                 # sample files (but it's not present in 1500 and it is present in 1700)
                 if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
 
-              # FIXME: All fields past this point were recently added to the spec and probably don't
-              # exist in older file versions. In fact, that seems to be implied by the FIXME right above this.
-              - id: unknown7
-                size: 8
-              - id: negative_height
-                type: f8
-              - id: width
-                type: f8
-              - id: unknown8
-                size: 24
-              - id: ext_stop_properties
-                type: extended_stop_properties
-                repeat: expr
-                repeat-expr: num_stops
+              - id: ext_gradient_properties
+                type: extended_gradient_properties
+                # FIXME: similar case as above, except I know for a fact that some X6 files do have this, and others don't.
+                if: _root.version >= 1600 and _io.pos < _io.size
             instances:
               mode:
                 value: 'mode_raw & 0xff'
@@ -1578,6 +1568,20 @@ types:
               - id: height_rel
                 type: f8
                 doc: height of the fill relative to the object height
+          extended_gradient_properties:
+            seq:
+              - id: unknown1
+                size: 8
+              - id: negative_height
+                type: f8
+              - id: width
+                type: f8
+              - id: unknown2
+                size: 24
+              - id: ext_stop_properties
+                type: extended_stop_properties
+                repeat: expr
+                repeat-expr: _parent.num_stops
           extended_stop_properties:
             seq:
               - id: opacity
