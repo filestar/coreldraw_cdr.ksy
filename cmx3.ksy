@@ -8,19 +8,29 @@ meta:
 # TODO: doc
 seq:
   - id: magic
-    contents: CMX3
-  - id: len_format
-    type: u4
-  - id: format
-    size: len_format
-    type: format_data
-  - id: unknown
-    size: 8
-  - id: chunks
-    type: chunk
-    repeat: eos
-    if: not format.is_compressed
+    size: 4
+    type: str
+    valid:
+      any-of:
+        - '"CMX3"'
+        - '"RIFF"'
+  - id: body
+    type: body_new
+    if: 'magic == "CMX3"'
 types:
+  body_new:
+    seq:
+      - id: len_format
+        type: u4
+      - id: format
+        size: len_format
+        type: format_data
+      - id: unknown
+        size: 8
+      - id: chunks
+        type: chunk
+        repeat: eos
+        if: not format.is_compressed
   format_data:
     seq:
       - id: len_format_string
