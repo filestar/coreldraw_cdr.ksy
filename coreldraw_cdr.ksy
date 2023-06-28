@@ -429,6 +429,7 @@ types:
                 'arg_type::loda_coords': loda_coords
                 'arg_type::transform': transform
                 'arg_type::fill_style': fill_style
+                'arg_type::extended_fill_style': extended_fill_style
                 'arg_type::line_style': line_style
                 'arg_type::style_old': style_old
                 'arg_type::style_new': style_new
@@ -571,6 +572,15 @@ types:
                     value: tile_offset_y_raw / 100.0
                   rcp_offset:
                     value: rcp_offset_raw / 100.0
+      extended_fill_style:
+        seq:
+          - id: fill_winding_raw
+            type: u1
+          - id: rest
+            size-eos: true
+        instances:
+          fill_winding:
+            value: fill_winding_raw != 0
       line_style:
         seq:
           - id: waldo
@@ -1034,6 +1044,7 @@ types:
           id: rotate
           doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l485
         12000: unknown_num_1
+        14001: extended_fill_style
         16001: unknown_num_2
         19130:
           id: page_size
@@ -2866,7 +2877,7 @@ types:
                 if: flag == 1
               - id: paragraph_style
                 type: style_string
-                if: _parent.style_layout_version < 1700 and not _parent.frame_flag
+                if: _parent.style_layout_version >= 1600 and _parent.style_layout_version < 1700 and not _parent.frame_flag
               - id: default_style
                 type: style_string
               - id: num_records
