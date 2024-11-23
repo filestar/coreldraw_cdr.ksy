@@ -1,0 +1,2 @@
+# Mystery branch explanation
+As of November 23, 2024, I am on the `txsm_7_paragraph_improvements` branch of this repo, and there are a ton of changes in my local tree. It's been too long for me to remember the complete context behind them, so I'm pushing them to another branch just to be safe. IIRC though, I think I probably just copy-pasted another version of the spec so that I could cherry-pick changes to open PRs against the main repo with.

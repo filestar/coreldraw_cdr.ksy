@@ -69,13 +69,19 @@ types:
     seq:
       - id: chunk_id
         contents: RIFF
-      - id: len_body
+      - id: len_body_raw
         type: u4
       - id: body
         type: cdr_chunk_data
         size: len_body
       - id: pad_byte
-        size: len_body % 2
+        size: 'len_body < len_body_max ? len_body % 2 : 0'
+    instances:
+      len_body:
+        value: '(len_body_raw <= len_body_max ? len_body_raw : len_body_max).as<u4>'
+      len_body_max:
+        value: (_io.size - _io.pos).as<u4>
+
   chunks_normal:
     # Defined this type to be consistent with the inconsistent `cmpr` chunk
     seq:
@@ -239,13 +245,15 @@ types:
             '"fill"': fild_chunk_data # before CDR 700: `_root.version < 700`
             # '"arrw"': arrw_chunk_data
             '"flgs"': flgs_chunk_data
-            # '"ptrt"': ptrt_chunk_data
+            '"spid"': spid_chunk_data
+            '"pref"': pref_chunk_data
+            '"ptrt"': ptrt_chunk_data
             '"usdn"': usdn_chunk_data
             '"mcfg"': mcfg_chunk_data
             '"bmp "': bmp_chunk_data
             # '"bmpf"': bmpf_chunk_data
             # '"ppdt"': ppdt_chunk_data
-            # '"ftil"': ftil_chunk_data
+            '"ftil"': ftil_chunk_data
             # '"iccd"': iccd_chunk_data
             '"bbox"': bbox_chunk_data
             '"obbx"': obbx_chunk_data
@@ -424,14 +432,23 @@ types:
               switch-on: type
               cases:
                 'arg_type::loda_coords': loda_coords
+                'arg_type::transform': transform
                 'arg_type::fill_style': fill_style
+                'arg_type::extended_fill_style': extended_fill_style
                 'arg_type::line_style': line_style
-                'arg_type::style': style
+                'arg_type::style_old': style_old
+                'arg_type::style_new': style_new
                 'arg_type::name': name
                 'arg_type::polygon_transform': polygon_transform
                 'arg_type::opacity': opacity
+                'arg_type::powerclip_style': powerclip_style
+                'arg_type::container': container
                 'arg_type::page_size': page_size
                 'arg_type::guid_layer': guid
+                'arg_type::palt': palt
+                'arg_type::unknown_num_1': unknown_num
+                'arg_type::unknown_num_2': unknown_num
+                'arg_type::unknown_num_3': unknown_num
 
       loda_coords:
         seq:
@@ -439,6 +456,7 @@ types:
             type:
               switch-on: _parent._parent.chunk_type
               cases:
+                'chunk_types::layer': layer
                 'chunk_types::spline': spline
                 'chunk_types::rectangle': rectangle
                 'chunk_types::ellipse': ellipse
@@ -447,15 +465,29 @@ types:
                 'chunk_types::artistic_text': artistic_text
                 'chunk_types::bitmap': bitmap
                 'chunk_types::paragraph_text': paragraph_text
+                'chunk_types::grid': grid
+                'chunk_types::guides': guides
+                'chunk_types::desktop': desktop
                 'chunk_types::polygon_coords': polygon_coords
+      transform:
+        seq:
+          - id: waldo
+            # FIXME: add data
+            size-eos: true
+            if: _root.version < 400
 
+          # FIXME: test on files versioned 400-1400. Files versioned 1500-2400 have
+          # already been verified to use this format.
+          - id: trafo_id
+            type: u4
+            if: _root.version >= 400
       fill_style:
         seq:
           - id: waldo
             type: waldo_fill
             if: _root.version < 400
           - id: fill_id
-            size: 4
+            type: u4
             if: _root.version >= 400
         types:
           waldo_fill:
@@ -545,13 +577,22 @@ types:
                     value: tile_offset_y_raw / 100.0
                   rcp_offset:
                     value: rcp_offset_raw / 100.0
+      extended_fill_style:
+        seq:
+          - id: fill_winding_raw
+            type: u1
+          - id: rest
+            size-eos: true
+        instances:
+          fill_winding:
+            value: fill_winding_raw != 0
       line_style:
         seq:
           - id: waldo
             type: waldo_outl
             if: _root.version < 400
           - id: outl_id
-            size: 4
+            type: u4
             if: _root.version >= 400
         types:
           waldo_outl:
@@ -590,7 +631,7 @@ types:
                 type: u1
                 repeat: expr
                 repeat-expr: num_dashes
-      style:
+      style_old:
         seq:
           - id: style_id
             type:
@@ -598,6 +639,13 @@ types:
               cases:
                 true: u2
                 _: u4
+      style_new:
+        seq:
+          - id: style_id
+            # FIXME: might this actually be a u2 sometimes based on _root.precision_16bit?
+            type: u4
+          - id: style
+            type: style_string
       name:
         doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l305
         seq:
@@ -654,23 +702,131 @@ types:
             type: coord
           - id: cy
             type: coord
+      powerclip_style:
+        seq:
+          - id: powerclip_id_raw
+            type: u4
+        instances:
+          powerclip_id:
+            value: powerclip_id_raw >> 1
       opacity:
         seq:
+          - id: versioned_data
+            type: versioned_opacity
+            repeat: eos
+            if: _root.version >= 1300
+          - id: old_data
+            type: opacity_old
+            if: _root.version < 1300
+        types:
+          versioned_opacity:
+            seq:
+              - id: since_version
+                type: u4
+              - id: len_body
+                type: u4
+              - id: body
+                size: len_body
+                type:
+                  switch-on: since_version
+                  cases:
+                    1300: opacity_13
+          opacity_13:
+            seq:
+              - id: unknown1
+                size: 61
+              - id: value
+                type: f8
+              - id: unknown2
+                size: 8
+              - id: merge_mode
+                type: u1
+                enum: merge_modes
+              - id: unknown3
+                size: 27
+              # I know this is a fill id because if it's set to a very large value (without an
+              # appropriate number of fill ids), CorelDRAW gives the error message "invalid fill
+              # ID" or something similar. Just a guess, but it likely refers to a fill to use as an
+              # opacity.
+              - id: fill_id
+                type: u4
+              - id: unknown4
+                size: 8
+          opacity_old:
+            seq:
+              - id: unknown1
+                size: 10
+              - id: value_raw
+                type: u2
+              - id: unknown2
+                size: 69
+                if: _io.size >= 125
+              - id: merge_mode
+                type: u1
+                enum: merge_modes
+                if: _io.size >= 125
+              - id: unknown3
+                size: _io.size - _io.pos
+            instances:
+              value:
+                value: value_raw / 1000.0
+        enums:
+          # https://community.coreldraw.com/sdk/api/draw/17/e/cdrmergemode
+          merge_modes:
+            0: normal
+            1: and
+            2: or
+            3: xor
+            6: invert
+            7: add
+            8: subtract
+            9: multiply
+            10: divide
+            11: if_lighter
+            12: if_darker
+            13: texturize
+            14: color
+            15: hue
+            16: saturation
+            17: lightness
+            18: red
+            19: green
+            20: blue
+            24: difference
+            27: behind
+            28: screen
+            29: overlay
+            30: softlight
+            31: hardlight
+            33: dodge
+            34: burn
+            36: exclusion
+      container:
+        seq:
+          - id: powerclip_id_raw
+            type: u4
           - id: unknown
-            size: '_root.version < 1300 ? 10 : 14'
-          - id: value_raw
-            type: u2
+            size: 12
         instances:
-          value:
-            value: value_raw / 1000.0
+          powerclip_id:
+            value: (powerclip_id_raw + 1) >> 1
       page_size:
         seq:
           - id: width
             type: coord
           - id: height
             type: coord
+      palt:
+        seq:
+          - id: color_properties
+            type: color_property_list
+      unknown_num:
+        seq:
+          - id: value
+            type: u4
 
       spline: {}
+      layer: {}
       rectangle:
         doc-ref: https://github.com/LibreOffice/libcdr/blob/4b28c1a10f06e0a610d0a740b8a5839dcec9dae4/src/lib/CDRParser.cpp#L1162
         seq:
@@ -725,12 +881,18 @@ types:
               - id: r0_raw
                 type: f8
             instances:
-              width:
+              width_raw:
                 value: _parent.x0.value * scale_x / 2.0
-              height:
+              width:
+                value: '(width_raw < 0.0) ? -width_raw : width_raw'
+              height_raw:
                 value: _parent.y0.value * scale_y / 2.0
+              height:
+                value: '(height_raw < 0.0) ? -height_raw : height_raw'
+              min_dimension:
+                value: '(width < height) ? width : height'
               scale:
-                value: 'scale_with == 0 ? 1 : 254000.0'
+                value: 'scale_with == 0 ? min_dimension : 254000.0'
               r3:
                 value: r3_raw * scale
               r2:
@@ -806,18 +968,32 @@ types:
       bitmap:
         doc-ref: https://github.com/LibreOffice/libcdr/blob/4b28c1a10f06e0a610d0a740b8a5839dcec9dae4/src/lib/CDRParser.cpp#L1468
         seq:
-          - id: x1
+          # The meaning of the following fields is probably the same as in 'obbx_chunk_data'
+          - id: p0_x
             type: coord
-          - id: y1
+          - id: p0_y
             type: coord
-          - id: x2
+          - id: p1_x
             type: coord
-          - id: y2
+          - id: p1_y
             type: coord
+          - id: p2_x
+            type: coord
+          - id: p2_y
+            type: coord
+          - id: p3_x
+            type: coord
+          - id: p3_y
+            type: coord
+
           - id: unknown1
-            size: 16
+            size: 4
+          - id: width
+            type: u4
+          - id: height
+            type: u4
           - id: unknown2
-            size: 16
+            type: u4
           - id: image_id
             type: u4
           - id: unknown3
@@ -837,6 +1013,9 @@ types:
             type: coord
           - id: height
             type: coord
+      grid: {}
+      guides: {}
+      desktop: {}
       polygon_coords:
         seq:
           - id: num_points_raw
@@ -848,17 +1027,19 @@ types:
         10: line_style
         20: fill_style
         30: loda_coords
-        100: waldo_trfd
-        200: style
+        100: transform
+        200: style_old
+        201: style_new
         1000:
           id: name
           doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_const.py#L41
         2000:
           id: palt
           doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_const.py#L42
+        3500: powerclip_style
         8000: opacity
         8005:
-          id: contnr
+          id: container
           doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l486
         11000: polygon_transform
         12010:
@@ -867,6 +1048,9 @@ types:
         12030:
           id: rotate
           doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l485
+        12000: unknown_num_1
+        14001: extended_fill_style
+        16001: unknown_num_2
         19130:
           id: page_size
           doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRParser.cpp#L1817-L1818
@@ -881,13 +1065,18 @@ types:
             particular for the "Guides", "Desktop" and "Document Grid" layers in
             the master page which are then referenced in content pages via the
             same GUID
+        40200: unknown_num_3
       chunk_types:
+        0x00: layer
         0x01: rectangle
         0x02: ellipse
         0x03: line_and_curve
         0x04: artistic_text
         0x05: bitmap
         0x06: paragraph_text
+        0x0B: grid
+        0x0C: guides
+        0x11: desktop
         0x14: polygon_coords
         0x25: path
         0x26: spline
@@ -913,6 +1102,13 @@ types:
           cases:
             true: u2
             _: u4
+      - id: unknown
+        type:
+          switch-on: _root.precision_16bit
+          cases:
+            true: u2
+            _: u4
+        valid: 0xffff
     instances:
       arg_offsets:
         doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRParser.cpp#L1336-L1338
@@ -923,67 +1119,56 @@ types:
             true: u2
             _: u4
         repeat: expr
-        repeat-expr: num_of_args
-      trafos:
-        type: trafo_wrapper(arg_offsets[_index])
+        repeat-expr: num_of_args + 1
+      args:
+        type: arg(arg_offsets[_index], arg_offsets[_index + 1] - arg_offsets[_index])
         repeat: expr
         repeat-expr: num_of_args
     types:
-      trafo_wrapper:
+      arg:
         params:
-          - id: offs
+          - id: ofs_body
+            type: u4
+          - id: len_body
             type: u4
         instances:
-          tmp_type:
-            pos: 'offs + (_root.version >= 1300 ? 8 : 0)'
-            type: u2
-          is_trafo:
-            value: tmp_type == 0x08 and _root.version >= 500
-            doc: 'note: only supporting `_root.version >= 500` for now'
           body:
-            pos: 'offs + (_root.version >= 1300 ? 8 : 0) + tmp_type._sizeof'
+            pos: ofs_body
+            size: len_body
+            type: arg_body
+      arg_body:
+        seq:
+          - id: since_version
+            type: u4
+            if: _root.version >= 1300
+          - id: len_body
+            type: u4
+            if: _root.version >= 1300
+          - id: type
+            type: u2
+          - id: trafo
             type: trafo
             if: is_trafo
+        instances:
+          is_trafo:
+            value: type == 0x08 and _root.version >= 500
+            doc: 'note: only supporting `_root.version >= 500` for now'
       trafo:
-        doc: |
-          See <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-function/matrix#syntax>
-          for an explanation of matrix parameter labels.
-        doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_utils.py#L29
         seq:
           - id: unknown1
             if: _root.version >= 600
             size: 6
-          - id: a
-            -orig-id: m11 # UniConvertor
-            type: f8
-          - id: c
-            -orig-id: m12 # UniConvertor
-            type: f8
-          - id: tx_raw
-            type: f8
-          - id: b
-            -orig-id: m21 # UniConvertor
-            type: f8
-          - id: d
-            -orig-id: m22 # UniConvertor
-            type: f8
-          - id: ty_raw
-            type: f8
-        instances:
-          tx:
-            value: 'tx_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
-          ty:
-            value: 'ty_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
-
+          - id: matrix
+            type: matrix
   outl_chunk_data:
     seq:
       - id: outl_id
-        size: 4
-      - id: skips
+        type: u4
+      - id: properties
         if: _root.version >= 1300
-        type: skip
+        type: property
         repeat: until
-        repeat-until: _.id == 1
+        repeat-until: '_.type == property_type::end'
       - id: line_type
         type: u2
       - id: caps_type
@@ -1002,6 +1187,10 @@ types:
         size: 2
       - id: angle
         type: angle
+      # FIXME: at least for sample files versioned >= 1500, the data in this field looks like the
+      # last 46/48 bytes of a `matrix`, and we conveniently have two spare bytes above in
+      # `unknown2`. Needs further investigation on earlier versions to make sure we don't break
+      # `angle`.
       - id: unknown3
         size: |
           _root.version >= 1300 ? 46
@@ -1021,6 +1210,8 @@ types:
         type: u4
       - id: end_marker_id
         type: u4
+      - id: rest
+        size-eos: true
     instances:
       ofs_dashes:
         value: _io.pos
@@ -1036,15 +1227,31 @@ types:
       stretch:
         value: stretch_raw / 100.0
     types:
-      skip:
+      property:
         seq:
-          - id: id
+          - id: type
             type: u4
-          - id: lngth
+            enum: property_type
+          - id: len_body
             type: u4
-          - id: unknown
-            if: id != 1
-            size: lngth
+          - id: body
+            size: len_body
+            type:
+              switch-on: type
+              cases:
+                property_type::color_properties: color_property_list
+                property_type::unknown_num: u4
+            # FIXME: We ignore `len_body` if the type is `end`; however, in the `end` property of
+            # the sample files I've tested, `len_body` is equal to the number of remaining bytes in
+            # the 'outl' chunk, minus 8. This might suggest that most of the fields of
+            # `outl_chunk_data` should be moved into another type, and that that type should form
+            # the body of the `end` property.
+            if: type != property_type::end
+    enums:
+      property_type:
+        1: end
+        2: color_properties
+        3: unknown_num
 
   fild_chunk_data:
     seq:
@@ -1069,8 +1276,8 @@ types:
           cases:
             fill_types::uniform: solid
             fill_types::fountain: gradient
+            fill_types::color_bitmap: image_fill_data
             # 7: pattern
-            # 9: image_fill_data # bitmap
             # 10: image_fill_data # full color
             # 11: texture
       - id: fild_rest
@@ -1145,14 +1352,8 @@ types:
         types:
           property_list:
             seq:
-              - id: color_old
-                type: color
-                if: _root.version < 1300
-              - id: items
-                type: property
-                repeat: until
-                repeat-until: _.type == property_type::end
-                if: _root.version >= 1300
+              - id: color_properties
+                type: color_property_list
               - id: unknown1
                 type: u2
                 valid:
@@ -1174,6 +1375,7 @@ types:
                     - 0
                     - 1 # CorelDRAW 7: DRAW/SAMPLES/{7EFFECTS.CDR,CAMERA.CDR}, CorelDRAW 8: DRAW/SAMPLES/CAMERA.CDR
                     - 13 # CorelDRAW 7: TUTORS/DRAW/FISHEYE.CDR
+                    - 1048576
                 doc: |
                   see <https://community.coreldraw.com/talk/coreldraw_graphics_suite_x5/f/coreldraw-x5/37492/coreldraw-x5-icons-inside-color-indicator-what-do-they-mean>
                   for how this is displayed in CorelDRAW
@@ -1183,6 +1385,7 @@ types:
                   expr: |
                     _.value_deg == 45.0
                     or _.value_deg == 10.0
+                    or _.value_deg == 6.0
                     or _.value_deg == 0.0
                     or _.value_deg == 0.0001
                 doc: |
@@ -1190,6 +1393,7 @@ types:
 
                   * 45.0 - usual value (by far the most common),
                   * 10.0 - CorelDRAW 7: DRAW/SAMPLES/WISHLIST.CDR,
+                  * 6.0
                   * 0.0:
                     - CorelDRAW 7: DRAW/SAMPLES/CAMERA.CDR
                     - CorelDRAW 8: DRAW/SAMPLES/{CAMERA.CDR,DRAW QUICK REF.CDR}
@@ -1208,195 +1412,113 @@ types:
             instances:
               overprint:
                 value: overprint_raw != 0
-
-          property:
-            seq:
-              - id: type
-                type: u1
-                enum: property_type
-              - id: len_body
-                type: u4
-                valid:
-                  eq: |
-                    type == property_type::color
-                      ? 12 :
-                    type == property_type::palette_guid
-                      ? 16 :
-                    type == property_type::end
-                      ? 0 :
-                      len_body
-              - id: body
-                size: len_body
-                type:
-                  switch-on: type
-                  cases:
-                    property_type::color: color
-                    property_type::special_palette_color_lab: color
-                    property_type::palette_guid: guid
-                    property_type::special_palette_color_part1: special_palette_color_part1
-                    property_type::special_palette_color_part2: special_palette_color_part2
-                    property_type::special_palette_color_id: palette_color_id
-                    property_type::special_palette_color_name: palette_color_name
-                if: type != property_type::end
-          palette_color_id:
-            seq:
-              - id: id
-                type: u2
-              - id: rest
-                size-eos: true
-                valid:
-                  eq: '[].as<bytes>'
-          palette_color_name:
-            seq:
-              - id: name
-                type: color_name
-              - id: rest
-                size-eos: true
-                valid:
-                  eq: '[].as<bytes>'
-          special_palette_color_part1:
-            seq:
-              - id: palette_guid
-                type: guid
-              - id: name
-                type: color_name
-              - id: special_pal_p1_rest
-                size-eos: true
-          special_palette_color_part2:
-            seq:
-              # this `name_raw` is actually null-terminated, unlike the others
-              - id: name_raw
-                type: color_name
-              - id: special_pal_p2_rest
-                size-eos: true
-            instances:
-              name:
-                # assumes `_root.version >= 1200`
-                value: |
-                  name_raw.name.substring(name_raw.name.length - 1, name_raw.name.length) == [0x00, 0x00].to_s('UTF-16LE')
-                    ? name_raw.name.substring(0, name_raw.name.length - 1)
-                    : name_raw.name
-          color_name:
-            seq:
-              - id: char_len_name
-                type: u4
-              - id: name
-                size: char_len_name * 2
-                type: str
-                encoding: UTF-16LE
-        enums:
-          property_type:
-            0x00: end
-            0x01: color
-            0x03: special_palette_color_part2
-            0x06:
-              id: special_palette_color_lab
-              doc: |
-                in addition to the standard `property_type::color` which seems to be using
-                `color_model::bgr_tint` (whenever found in the same solid fill as
-                `property_type::special_palette_color_lab`), this property appears only
-                for "special palette" colors (as all
-                `property_type::special_palette_color_*` properties) and uses
-                `color_model::lab_offset_128` (at least in samples I've seen).
-
-                This kind of makes sense because RGB is a device-dependent color model,
-                whereas L*a*b* (stored in this property) is device-independent (so it's
-                not redundant to include both). The L*a*b* color also doesn't seem to be
-                affected by the "Tint", whereas the `color_model::bgr_tint` color in
-                `property_type::color` holds tint and factors the tint into the RGB value.
-            0x07:
-              id: palette_guid
-              doc: |
-                the set of used values is shared among colors and files (i.e. this GUID is
-                *not* randomly generated, but reused), the most common are 16 zero bytes
-                (`00000000-0000-0000-0000-000000000000`) which seem to be only used for
-                `color_palette::user`, followed by the second most common
-                `CB 19 CD CC 75 46 5E 4A 8B DA D0 BB BA AB 8A F0`
-                (`cccd19cb-4675-4a5e-8bda-d0bbbaab8af0`; if you search for this GUID [on
-                Google](https://www.google.com/search?q=cccd19cb-4675-4a5e-8bda-d0bbbaab8af0),
-                you actually get some results, which is interesting) only used for
-                `color_palette::user` colors using the CMYK color model
-                (`color_model::cmyk100` or `color_model::cmyk255_i3`).
-
-                You can also find `74 CD 6C FC A8 10 52 41 89 01 A5 1F AC B4 77 85`
-                (`fc6ccd74-10a8-4152-8901-a51facb47785`) in a few sample files, only used
-                for `color_model::spot` colors with `color_palette::pantone_coated`.
-            0x08: special_palette_color_part1
-            0x0b: special_palette_color_id
-            0x0c: special_palette_color_name
       gradient:
         seq:
-          - id: unknown1
-            size: '_root.version >= 1300 ? 8 : 2'
-          - id: type
-            type: u1
-          - id: unknown2
-            size: |
-              _root.version >= 1300 ? 17
-                : _root.version >= 600 ? 19
-                  : 11
-          - id: edge_offset
-            type:
-              switch-on: _root.version >= 600 and _root.version < 1300
-              cases:
-                true: s4
-                _: s2
-          - id: angle
-            type: angle
-          - id: center_x_offset
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: s2
-                _: s4
-          - id: center_y_offset
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: s2
-                _: s4
-          - id: unknown3
-            if: _root.version >= 600
-            size: 2
-          - id: mode_raw
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: u2
-                _: u4
-          - id: mid_point_raw
-            type: u1
-          - id: unknown4
-            size: 1
-          - id: num_stops_raw
-            type:
-              switch-on: _root.precision_16bit
-              cases:
-                true: u2
-                _: u4
-          - id: unknown5
+          - id: versioned_data
+            type: versioned_gradient
+            # FIXME: this should be repeat: eos, but gradient_data leaves some bytes behind
+            # sometimes, leading to a parse error
+            repeat: eos
             if: _root.version >= 1300
-            size: 3
-          - id: stops
-            type: stop
-            repeat: expr
-            repeat-expr: num_stops
-          - id: unknown6
-            size: 3
-            if: _root.version >= 1300
-          - id: trafo
-            type: transformation
-            # FIXME: `version >= 1600` may not be accurate due to a lack of available
-            # sample files (but it's not present in 1500 and it is present in 1700)
-            if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
-        instances:
-          mode:
-            value: 'mode_raw & 0xff'
-          mid_point:
-            value: mid_point_raw / 100.0
-          num_stops:
-            value: 'num_stops_raw & 0xffff'
+          - id: gradient_old
+            type: gradient_data
+            if: _root.version < 1300
         types:
+          versioned_gradient:
+            seq:
+              - id: since_version
+                type: u4
+              - id: len_body
+                type: u4
+              - id: body
+                # FIXME: len_body is not large enough for the current `gradient_data` spec.
+                # I'm guessing either the `gradient_data` spec contains too much stuff, or this is
+                # not truly a version + length structure.
+                #size: len_body
+                type:
+                  switch-on: since_version
+                  cases:
+                    1300: gradient_data
+          # ordinarily I would split this into `gradient_13` and `gradient_old`, but the cases are
+          # so similar that I decided to leave them together.
+          gradient_data:
+            seq:
+              - id: unknown1
+                size: 2
+                if: _root.version < 1300
+              - id: type
+                type: u1
+              - id: unknown2
+                size: |
+                  _root.version >= 1300 ? 17
+                    : _root.version >= 600 ? 19
+                      : 11
+              - id: edge_offset
+                type:
+                  switch-on: _root.version >= 600 and _root.version < 1300
+                  cases:
+                    true: s4
+                    _: s2
+              - id: angle
+                type: angle
+              - id: center_x_offset
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: s2
+                    _: s4
+              - id: center_y_offset
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: s2
+                    _: s4
+              - id: unknown3
+                if: _root.version >= 600
+                size: 2
+              - id: mode_raw
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: u2
+                    _: u4
+              - id: mid_point_raw
+                type: u1
+              - id: unknown4
+                size: 1
+              - id: num_stops_raw
+                type:
+                  switch-on: _root.precision_16bit
+                  cases:
+                    true: u2
+                    _: u4
+              - id: unknown5
+                if: _root.version >= 1300
+                size: 3
+              - id: stops
+                type: stop
+                repeat: expr
+                repeat-expr: num_stops
+              - id: unknown6
+                size: 3
+                if: _root.version >= 1300
+              - id: trafo
+                type: transformation
+                # FIXME: `version >= 1600` may not be accurate due to a lack of available
+                # sample files (but it's not present in 1500 and it is present in 1700)
+                if: _root.version >= 1600 and (_io.size - _io.pos) >= sizeof<transformation>
+
+              - id: ext_gradient_properties
+                type: extended_gradient_properties
+                # FIXME: similar case as above, except I know for a fact that some X6 files do have this, and others don't.
+                if: _root.version >= 1600 and _io.pos < _io.size
+            instances:
+              mode:
+                value: 'mode_raw & 0xff'
+              mid_point:
+                value: mid_point_raw / 100.0
+              num_stops:
+                value: 'num_stops_raw & 0xffff'
           stop:
             seq:
               # Byte size of one `stop` entry in each CDR version for which I
@@ -1462,6 +1584,34 @@ types:
               - id: height_rel
                 type: f8
                 doc: height of the fill relative to the object height
+          extended_gradient_properties:
+            seq:
+              - id: unknown1
+                size: 8
+              - id: negative_height
+                type: f8
+              - id: width
+                type: f8
+              - id: unknown2
+                size: 24
+              - id: ext_stop_properties
+                type: extended_stop_properties
+                repeat: expr
+                repeat-expr: _parent.num_stops
+          extended_stop_properties:
+            seq:
+              - id: opacity
+                type: u1
+              - id: unknown1
+                size: 2
+                valid: '[0x00, 0x00]'
+              - id: mid_point_raw
+                type: u1
+              - id: unknown2
+                size: 1
+            instances:
+              mid_point:
+                value: mid_point_raw / 100.0
       pattern:
         seq:
           - id: unknown1
@@ -1523,12 +1673,60 @@ types:
                 : tmp_height / (_root.version < 600 ? 1000.0 : 254000.0)
           is_relative:
             value: '((flags & 0x04) != 0) and (_root.version < 900)'
+      image_fill_data:
+        seq:
+          - id: versioned_data
+            type: versioned_image_fill
+            repeat: eos
+            if: _root.version >= 1300
+        types:
+          versioned_image_fill:
+            seq:
+              - id: since_version
+                type: u4
+              - id: len_body
+                type: u4
+              - id: body
+                size: len_body
+                type:
+                  switch-on: since_version
+                  cases:
+                    1600: image_fill_16
+                    1300: image_fill_13
+          image_fill_16:
+            seq:
+              - id: unknown1
+                size: 4
+              - id: tmp_width
+                type: u4
+              - id: tmp_height
+                type: u4
+              - id: unknown2
+                size: 4
+          image_fill_13:
+            seq:
+              - id: unknown1
+                size: 4
+              - id: unknown2
+                size: 4
+              - id: unknown3
+                size: 8
+              - id: unknown4 # same as image_fill_16's `unknown1`
+                size: 4
+              - id: tmp_width
+                type: u4
+              - id: tmp_height
+                type: u4
+              - id: unknown5 # same as image_fill_16's `unknown2`
+                size: 4
+              - id: image_id
+                type: u4
       texture:
         seq:
           - id: data
-            type: image_fill_data
+            type: image_fill_data_old
             if: _root.version >= 600
-      image_fill_data:
+      image_fill_data_old:
         seq:
           - id: skip_x3
             type: skip_x3_optional
@@ -1625,42 +1823,138 @@ types:
   # arrw_chunk_data: {}
   flgs_chunk_data:
     seq:
-      - id: flags
-        size: 4
-    instances:
-      chunk_type:
-        value: flags[3] & 0xff
+      - type: b1
+      - id: unknown1
+        type: b1
+      - type: b1 # GUESS: is_part_of_blend_group
+      - id: is_non_printable
+        type: b1
+      - id: is_locked
+        doc: '"locked" means not editable; can be used for layers, groups, objects'
+        type: b1
+      - id: has_extrude_group
+        type: b1
+      - id: unknown2
+        doc: |
+          Seen to be used for pages, layers, groups, link groups and objects.
+
+          It seems to be propagated to parent entities which the entity is part
+          of - for example, if set on an object ("LIST:obj "), it is also set on
+          the parent "LIST:layr" and also on the parent page ("LIST:page") of
+          this layer. But it can be apparently set on a page/layer/group on its
+          own, even if no child entity has it.
+        type: b1
+      - id: is_object_data_changed
+        doc: see "Object Data Manager"; can be set for groups and objects
+        type: b1
+      - id: is_hidden
+        doc: |
+          most commonly used for layers (because "Grid" layers are hidden by
+          default, in which case the `flags[1] & 0x01` bit is set)
+
+          can be also applied to groups and objects probably since CorelDRAW
+          X7.4 (because the `Shape.Visible` property is not present in
+          <https://community.coreldraw.com/sdk/api/draw/17/c/shape>, but is
+          listed in https://community.coreldraw.com/sdk/api/draw/17.4/c/shape)
+        type: b1
+      - id: unknown3
+        type: b1
+      - type: b1
+      - id: unknown4
+        type: b1
+      - id: is_clone_object
+        doc: |
+          Download a CDR sample file where this flag occurs:
+          ```
+          curl -LO ftp://ftp.corel.com/pub/ServiceBureau/Corel_PerfectImage/Test_Output_Files/Corel_PerfectImage_FRANCHISE-Testfile/Corel_PerfectImage_FRANCHISE-Testfile.cdr
+          ````
+
+          In the Object Manager (with the "Show Object Properties" option
+          enabled), the clone object in
+          `Corel_PerfectImage_FRANCHISE-Testfile.cdr` is displayed like this:
+
+          * Polygon with 9 Sides - Fill: Fountain, Outline: none [StaticID: 9,
+            flags: [0x24, 0x02, 0x00, 0x08]]
+            * __Clone Polygon__ with 9 Sides - Fill: Fountain, Outline: none [StaticID: 1999488,
+              flags: [0x01, 0x12, 0x00, 0x08]]
+
+              (this is the "clone object" with the `flags[1] & 0x10` flag set)
+
+            * Extrude Group - Fill: Fill Color, Outline: None [StaticID: 1999493,
+              flags: [0x01, 0x00, 0x00, 0x18]]
+        type: b1
+      - type: b1
+      - type: b1 # GUESS: has_callout
+      - id: is_last_and_unpaired_page
+        doc: |
+          Set on the last page in a document with "Facing pages" enabled in Page
+          Layout options if this page is not part of a spread.
+
+          For example, with "Start on: Right side", if the pages are ["Page 1",
+          "Page 2-3", "Page 4"], the last "Page 4" will have this flag set.
+          However, if the pages are only ["Page 1", "Page 2-3"], the last page
+          "Page 2-3" doesn't have this flag set, because it's a page spread, not
+          an individual page.
+        type: b1
+      - id: is_master
+        doc: master page or master layer
+        type: b1
+      - type: b2
+      - id: has_lens
+        doc-ref: https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l942
+        type: b1
+      - id: is_powerclip_container
+        doc: |
+          specifies whether "LIST:obj " defines a PowerClip container, an object which references a
+          PowerClip group.
+        type: b1
+      - type: b2
+      - id: is_powerclip_group_def
+        doc: |
+          specifies whether "LIST:grp " defines a PowerClip group
+
+          all "LIST:grp " chunks directly inside "LIST:clpt" (which is a
+          "LIST:doc " subchunk) have this flag set
+        type: b1
+      - id: chunk_type
+        type: u1
         enum: chunk_types
-      is_master_page:
-        value: flags[2] != 0
-        if: chunk_type == chunk_types::page
-        doc: flags[2] is `0x00` or `0x01`
-        doc-ref: https://github.com/LibreOffice/libcdr/blob/b14f6a1f17652aa842b23c66236610aea5233aa6/src/lib/CDRContentCollector.cpp#L195
-      layer_type:
-        value: flags[0] & 0xff
-        enum: layer_types
-        if: chunk_type == chunk_types::layer
     enums:
-      # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l490
-      layer_types:
-        0x00: layer
-        0x08: desktop
-        0x0a: guides
-        0x1a: grid
       # https://sourceforge.net/p/uniconvertor/code/145/tree/formats/CDR/cdr_explorer/src/chunks.py#l926
       chunk_types:
-        0x08: object
-        0x10: group
-        0x90: page
-        0x98: layer
-
-  # ptrt_chunk_data:
-  #   seq:
-  #     - id: groups
-  #       size: 4
-  #       repeat: expr
-  #       repeat-expr: 4
-
+        0x08: object # "LIST:obj " (most common value for "LIST:obj ")
+        0x09: text # "LIST:obj " (paragraph or artistic text)
+        0x10: group # "LIST:grp " (most common value for "LIST:grp ")
+        0x11: group_i17 # "LIST:grp " (CorelDRAW 8: 'DRAW/SAMPLES/DRAW QUICK REF.CDR')
+        0x18: link_group # "LIST:lnkg"
+        0x20: symbol # "LIST:symb"
+        0x90: page # "LIST:page"
+        0x98: layer # "LIST:layr"
+  spid_chunk_data:
+    seq:
+      - id: value
+        type: guid
+  pref_chunk_data:
+    seq:
+      # This field seems to represent a list of key value pairs, separated by null codepoints
+      # FIXME: this should probably be a `repeat: eos` field, with null separators
+      - id: value
+        type: str
+        encoding: UTF-16LE
+        size-eos: true
+  ptrt_chunk_data:
+    doc: |
+      This chunk is just like 'bbox', but appears in 'LIST:doc ' as such specifies the extents of
+      the entire drawing rather an an individual page, group, object, etc.
+    seq:
+      - id: p0_x
+        type: coord
+      - id: p0_y
+        type: coord
+      - id: p1_x
+        type: coord
+      - id: p1_y
+        type: coord
   usdn_chunk_data:
     doc: |
       'usdn' = *U*nique *S*tatic i*D*e*N*tifier (probably)
@@ -1703,6 +1997,8 @@ types:
       - id: page_size
         if: v >= 400
         type: new_page_size
+      - id: unknown1
+        size-eos: true
       # # FIXME: starting from here, the positions are completely off in newer CDR
       # # versions (so it's obviously reading garbage), there's probably some
       # # unknown data to skip
@@ -1710,7 +2006,7 @@ types:
       #   type: u2
       # - id: orientation
       #   type: u2
-      #   enum: orientation
+      #   enum: orientations
       # - id: unknown2
       #   size: 12
       # - id: show_page_border
@@ -1718,13 +2014,13 @@ types:
       #   enum: boolean
       # - id: layout
       #   type: u2
-      #   enum: layout
+      #   enum: layouts
       # - id: facing_pages
       #   type: u2
       #   enum: boolean
       # - id: start_on
       #   type: u2
-      #   enum: start_on
+      #   enum: side
       # - id: offset_x
       #   type: coord
       # - id: offset_y
@@ -1785,10 +2081,10 @@ types:
           - id: height
             type: coord
     # enums:
-    #   orientation:
+    #   orientations:
     #     0: portrait
     #     1: landscape
-    #   layout:
+    #   layouts:
     #     1: full_page
     #     2: book
     #     3: booklet
@@ -1798,7 +2094,7 @@ types:
     #   boolean:
     #     0: false
     #     1: true
-    #   start_on:
+    #   side:
     #     0: right_side
     #     1: left_side
     #   unit:
@@ -1823,27 +2119,97 @@ types:
           cases:
             true: u2
             _: u4
-      - size: '_root.version < 600 ? 14 : _root.version < 700 ? 46 : 50'
-      - id: color_model
-        type: u4
-      - size: 4
-      - id: width
-        type: u4
-      - id: height
-        type: u4
-      - size: 4
-      - id: bpp
-        type: u4
-      - size: 4
-      - id: bmp_size
-        type: u4
-      - size: 32
-      - id: palette
-        if: 'bpp < 24 and color_model != 5 and color_model != 6'
-        type: palette_type
-      - id: bitmap
-        size: bmp_size
+      - id: unknown1
+        size: 4
+      - size: 0
+        if: ext_header_pos < 0
+      - id: ext_header
+        type: extended_header
+        if: _root.version >= 600
+
+      # Usually includes one or two: one for colour, and optionally another for alpha
+      - id: bitmaps
+        type: bitmap
+        repeat: eos
+    instances:
+      ext_header_pos:
+        value: _io.pos
     types:
+      extended_header:
+        seq:
+          # Based on the similarity between the seen values of this field and `bitmap.flags`, it's
+          # possible that these are actually the same field, and the set bits determine what follows.
+          - id: flags
+            type: u2
+            valid: 0x4955
+          - id: unknown1
+            size: 2
+          - id: bmp_size
+            type: u4
+            valid: _io.size - _parent.ext_header_pos
+          - id: unknown2
+            size: 4
+          - id: color_offset
+            type: u4
+            valid: sizeof<extended_header>
+            doc: |
+              Offset in bytes from the beginning of `ext_header` to the beginning of the color
+              bitmap in `_parent.bitmaps`.
+          - id: alpha_offset
+            type: u4
+            doc: |
+              Offset in bytes from the beginning of `ext_header` to the beginning of the alpha
+              bitmap in `_parent.bitmaps`. Set to 0 if there is no alpha bitmap.
+          - id: unknown3
+            size: 12
+      bitmap:
+        seq:
+          - id: flags
+            type: u2
+            valid: 0x4952
+          - id: len_body
+            type: u4
+          - id: body
+            type: bitmap_body
+            size: len_body - flags._sizeof - len_body._sizeof
+      bitmap_body:
+        seq:
+          - id: unknown1
+            type: u4
+          # Seen value: 78. This matches the difference in offset between the beginnings of '_parent.flags'
+          # and 'alpha_data'
+          - id: len_body
+            type: u4
+            valid:
+              min: 78
+          - id: color_model
+            type: u4
+          - id: unknown2
+            type: u4
+          - id: width
+            type: u4
+          - id: height
+            type: u4
+          - id: unknown3
+            type: u4
+          - id: bpp
+            type: u4
+          - id: line_size
+            type: u4
+          - id: bmp_size
+            type: u4
+            valid: line_size * height
+          - id: unknown4
+            size: 16
+          - id: unknown5
+            type: u4
+          - id: unknown6
+            size: 12
+          - id: palette
+            if: 'bpp < 24 and color_model != 5 and color_model != 6 and color_model != 99'
+            type: palette_type
+          - id: bitmap
+            size: bmp_size
       palette_type:
         seq:
           - id: unknown
@@ -1874,7 +2240,10 @@ types:
 
   # bmpf_chunk_data: {}
   # ppdt_chunk_data: {}
-  # ftil_chunk_data: {}
+  ftil_chunk_data:
+    seq:
+      - id: matrix
+        type: matrix
   # iccd_chunk_data: {}
   bbox_chunk_data:
     doc: |
@@ -2085,7 +2454,7 @@ types:
             type: u4
           - size: 4
           - id: value
-            size: 4
+            type: u4
       font:
         seq:
           - id: id
@@ -2831,6 +3200,33 @@ types:
             0b00: angle
             0b01: smooth
             0b10: symmetrical
+  matrix:
+    doc: |
+      See <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-function/matrix#syntax>
+      for an explanation of matrix parameter labels.
+    doc-ref: https://github.com/sk1project/uniconvertor/blob/973d5b6f/src/uc2/formats/cdr/cdr_utils.py#L29
+    seq:
+      - id: a
+        -orig-id: m11 # UniConvertor
+        type: f8
+      - id: c
+        -orig-id: m12 # UniConvertor
+        type: f8
+      - id: tx_raw
+        type: f8
+      - id: b
+        -orig-id: m21 # UniConvertor
+        type: f8
+      - id: d
+        -orig-id: m22 # UniConvertor
+        type: f8
+      - id: ty_raw
+        type: f8
+    instances:
+      tx:
+        value: 'tx_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
+      ty:
+        value: 'ty_raw / (_root.version < 600 ? 1000.0 : 254000.0)'
   angle:
     seq:
       - id: raw
@@ -3171,6 +3567,132 @@ types:
             - cdrSVGPalette
             - SVGColor # file name (SVGColor.xml)
           doc: SVG Colors
+  color_property_list:
+    seq:
+      - id: color_old
+        type: color
+        if: _root.version < 1300
+      - id: items
+        type: property
+        repeat: until
+        repeat-until: _.type == property_type::end
+        if: _root.version >= 1300
+    types:
+      property:
+        seq:
+          - id: type
+            type: u1
+            enum: property_type
+          - id: len_body
+            type: u4
+            valid:
+              eq: |
+                type == property_type::color
+                  ? 12 :
+                type == property_type::palette_guid
+                  ? 16 :
+                type == property_type::end
+                  ? 0 :
+                  len_body
+          - id: body
+            size: len_body
+            type:
+              switch-on: type
+              cases:
+                property_type::color: color
+                property_type::special_palette_color_lab: color
+                property_type::palette_guid: guid
+                property_type::special_palette_color_part1: special_palette_color_part1
+                property_type::special_palette_color_part2: special_palette_color_part2
+                property_type::special_palette_color_id: palette_color_id
+                property_type::special_palette_color_name: palette_color_name
+            if: type != property_type::end
+      palette_color_id:
+        seq:
+          - id: id
+            type: u2
+          - id: rest
+            size-eos: true
+            valid:
+              eq: '[].as<bytes>'
+      palette_color_name:
+        seq:
+          - id: name
+            type: color_name
+          - id: rest
+            size-eos: true
+            valid:
+              eq: '[].as<bytes>'
+      special_palette_color_part1:
+        seq:
+          - id: palette_guid
+            type: guid
+          - id: name
+            type: color_name
+          - id: special_pal_p1_rest
+            size-eos: true
+      special_palette_color_part2:
+        seq:
+          # this `name_raw` is actually null-terminated, unlike the others
+          - id: name_raw
+            type: color_name
+          - id: special_pal_p2_rest
+            size-eos: true
+        instances:
+          name:
+            # assumes `_root.version >= 1200`
+            value: |
+              name_raw.name.substring(name_raw.name.length - 1, name_raw.name.length) == [0x00, 0x00].to_s('UTF-16LE')
+                ? name_raw.name.substring(0, name_raw.name.length - 1)
+                : name_raw.name
+      color_name:
+        seq:
+          - id: char_len_name
+            type: u4
+          - id: name
+            size: char_len_name * 2
+            type: str
+            encoding: UTF-16LE
+    enums:
+      property_type:
+        0x00: end
+        0x01: color
+        0x03: special_palette_color_part2
+        0x06:
+          id: special_palette_color_lab
+          doc: |
+            in addition to the standard `property_type::color` which seems to be using
+            `color_model::bgr_tint` (whenever found in the same solid fill as
+            `property_type::special_palette_color_lab`), this property appears only
+            for "special palette" colors (as all
+            `property_type::special_palette_color_*` properties) and uses
+            `color_model::lab_offset_128` (at least in samples I've seen).
+
+            This kind of makes sense because RGB is a device-dependent color model,
+            whereas L*a*b* (stored in this property) is device-independent (so it's
+            not redundant to include both). The L*a*b* color also doesn't seem to be
+            affected by the "Tint", whereas the `color_model::bgr_tint` color in
+            `property_type::color` holds tint and factors the tint into the RGB value.
+        0x07:
+          id: palette_guid
+          doc: |
+            the set of used values is shared among colors and files (i.e. this GUID is
+            *not* randomly generated, but reused), the most common are 16 zero bytes
+            (`00000000-0000-0000-0000-000000000000`) which seem to be only used for
+            `color_palette::user`, followed by the second most common
+            `CB 19 CD CC 75 46 5E 4A 8B DA D0 BB BA AB 8A F0`
+            (`cccd19cb-4675-4a5e-8bda-d0bbbaab8af0`; if you search for this GUID [on
+            Google](https://www.google.com/search?q=cccd19cb-4675-4a5e-8bda-d0bbbaab8af0),
+            you actually get some results, which is interesting) only used for
+            `color_palette::user` colors using the CMYK color model
+            (`color_model::cmyk100` or `color_model::cmyk255_i3`).
+
+            You can also find `74 CD 6C FC A8 10 52 41 89 01 A5 1F AC B4 77 85`
+            (`fc6ccd74-10a8-4152-8901-a51facb47785`) in a few sample files, only used
+            for `color_model::spot` colors with `color_palette::pantone_coated`.
+        0x08: special_palette_color_part1
+        0x0b: special_palette_color_id
+        0x0c: special_palette_color_name
   text_style_flags:
     doc-ref: https://community.coreldraw.com/sdk/api/draw/17/c/structfontproperties
     seq:
