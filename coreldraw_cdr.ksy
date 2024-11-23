@@ -81,7 +81,7 @@ types:
         value: '(len_body_raw <= len_body_max ? len_body_raw : len_body_max).as<u4>'
       len_body_max:
         value: (_io.size - _io.pos).as<u4>
-      
+
   chunks_normal:
     # Defined this type to be consistent with the inconsistent `cmpr` chunk
     seq:
@@ -2141,7 +2141,13 @@ types:
             size: 2
           - id: bmp_size
             type: u4
-            valid: _io.size - _parent.ext_header_pos
+            valid:
+              expr: 'bmp_size == inclusive_bmp_size or bmp_size == exclusive_bmp_size'
+            doc: |
+              In most files, this field seems to contain the number of bytes from the beginning of
+              this `extended_header` to the end of the `bmp_chunk_data`. In at least one file, this
+              field contains the number of bytes from one past the end of this `extended_header` to
+              the end of the `bmp_chunk_data`.
           - id: unknown2
             size: 4
           - id: color_offset
@@ -2157,6 +2163,13 @@ types:
               bitmap in `_parent.bitmaps`. Set to 0 if there is no alpha bitmap.
           - id: unknown3
             size: 12
+        instances:
+          inclusive_bmp_size:
+            value: _io.size - _parent.ext_header_pos
+          exclusive_bmp_size:
+            value: inclusive_bmp_size - sizeof<extended_header>
+          bmp_size_is_exclusive:
+            value: bmp_size == exclusive_bmp_size
       bitmap:
         seq:
           - id: flags
