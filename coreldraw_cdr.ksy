@@ -2327,7 +2327,8 @@ types:
         enum: text_encoding
       - id: style_flags
         type: text_style_flags
-      - size: 10
+      - id: unknown
+        size: 10
       - id: font_name
         size-eos: true
   stlt_chunk_data:
@@ -3730,7 +3731,8 @@ types:
         enum: script_type
 
       # NOTE: At least two bits of this field correspond to https://community.coreldraw.com/sdk/api/draw/17/e/cdrfontcase
-      - type: b3
+      - id: unknown
+        type: b3
     enums:
       # https://community.coreldraw.com/sdk/api/draw/17/e/cdrfontline
       font_line:
@@ -3800,3 +3802,8 @@ enums:
     0x0000_8000: extra_bold_italic
     0x0001_0000: heavy
     0x0002_0000: heavy_italic
+    0x0002_EC44:
+      id: unknown
+      doc: |
+        it is unclear whether this value actually exists, or is just a side-effect of a problem
+        with this spec.
