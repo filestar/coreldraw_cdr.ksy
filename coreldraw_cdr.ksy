@@ -1252,36 +1252,13 @@ types:
     seq:
       - id: fill_id
         type: u4
-      - id: since_version
-        type: u4
-        valid: 1300
+      - id: versioned_data
+        type: versioned_fild
+        repeat: eos
         if: _root.version >= 1300
-      - id: len_body
-        type: u4
-        valid:
-          min: fill_type._sizeof
-        if: _root.version >= 1300
-      - id: fill_type
-        type: u2
-        enum: fill_types
-      - id: fill
-        size: '_root.version >= 1300 ? len_body.as<u4> - fill_type._sizeof : _io.size - _io.pos'
-        type:
-          switch-on: fill_type
-          cases:
-            fill_types::uniform: solid
-            fill_types::fountain: gradient
-            fill_types::color_bitmap: image_fill_data
-            # 7: pattern
-            # 10: image_fill_data # full color
-            # 11: texture
-      - id: fild_rest
-        size-eos: true
-        valid:
-          any-of:
-            - '[].as<bytes>'
-            - '[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]'
-
+      - id: fild_old
+        type: fild_data((_io.size - _io.pos).as<u4>)
+        if: _root.version < 1300
     enums:
       # CorelDRAW 7: PROGRAMS/DRAW_SCR.HLP 'GetFillType'
       # CorelDRAW 9: Programs/Draw_scr.hlp 'GetFillType'
@@ -1323,6 +1300,38 @@ types:
           -orig-id: DRAW_FILL_COLOR_TEXTURE
 
     types:
+      versioned_fild:
+        seq:
+          - id: since_version
+            type: u4
+          - id: len_body
+            type: u4
+          - id: body
+            size: len_body
+            type:
+              switch-on: since_version
+              cases:
+                1300: fild_data(len_body)
+                2400: fild_data(len_body)
+      fild_data:
+        params:
+          - id: len_body
+            type: u4
+        seq:
+          - id: fill_type
+            type: u2
+            enum: fill_types
+          - id: fill
+            size: '_root.version >= 1300 ? len_body.as<u4> - fill_type._sizeof : _io.size - _io.pos'
+            type:
+              switch-on: fill_type
+              cases:
+                fill_types::uniform: solid
+                fill_types::fountain: gradient
+                fill_types::color_bitmap: image_fill_data
+                # 7: pattern
+                # 10: image_fill_data # full color
+                # 11: texture
       solid:
         seq:
           - id: unknown1
@@ -1411,13 +1420,16 @@ types:
         seq:
           - id: versioned_data
             type: versioned_gradient
-            # FIXME: this should be repeat: eos, but gradient_data leaves some bytes behind
-            # sometimes, leading to a parse error
-            repeat: eos
+            # FIXME: this should be repeat: eos, but gradient_data sometimes leaves fewer than 8
+            # bytes behind, leading to a parse error
+            repeat: until
+            repeat-until: _io.size - _io.pos < 8
             if: _root.version >= 1300
           - id: gradient_old
             type: gradient_data
             if: _root.version < 1300
+          - id: rest
+            size-eos: true
         types:
           versioned_gradient:
             seq:
@@ -2801,7 +2813,7 @@ types:
                   - id: locale
                     type: text_locale
                     if: (fl3 & 0x08) != 0
-                  - type: skip_5
+                  - type: unknown_data
                     if: (fl3 & 0x20) != 0
                 instances:
                   fl3:
@@ -2820,11 +2832,23 @@ types:
                         type: u4
                       - size: 48
                         if: _root.version >= 1300
-                  skip_5:
+                  unknown_data:
                     seq:
-                      - size: '_root.version >= 1500 ? 52 : 4'
-                        if: flag != 0
+                      - id: has_data_raw
+                        type: u1
+                        if: _root.version >= 1500
+
+                      # Best guess: this appears to be an outl_id, fill_id, style_id, or something
+                      # along those lines
+                      - id: unknown_id
+                        type: u4
+                        if: 'has_data or _root.version < 1500'
+                      - id: mat
+                        type: matrix
+                        if: has_data
                     instances:
+                      has_data:
+                        value: '_root.version >= 1500 and has_data_raw != 0'
                       ofs_flag:
                         value: _io.pos
                       flag:
