@@ -2813,7 +2813,8 @@ types:
                   - id: locale
                     type: text_locale
                     if: (fl3 & 0x08) != 0
-                  - type: unknown_data
+                  - id: unknown
+                    type: unknown_data
                     if: (fl3 & 0x20) != 0
                 instances:
                   fl3:
@@ -2836,6 +2837,10 @@ types:
                     seq:
                       - id: has_data_raw
                         type: u1
+                        valid:
+                          any-of:
+                            - 0
+                            - 1
                         if: _root.version >= 1500
 
                       # Best guess: this appears to be an outl_id, fill_id, style_id, or something
